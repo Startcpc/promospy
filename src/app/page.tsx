@@ -7,6 +7,7 @@ import { searchCompanies } from "@/lib/search";
 import { CompanyCard } from "@/components/company-card";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import { SavedPromosLink } from "@/components/saved-promos-link";
 import { PromoSearch } from "@/components/promo-search";
 
 export default function Home() {
@@ -112,6 +113,7 @@ export default function Home() {
             </span>
           </h1>
         </div>
+        <nav aria-label="Избранное" className="mx-auto flex max-w-[1600px] justify-end px-4 pb-4 sm:px-6 lg:px-8"><SavedPromosLink /></nav>
       </header>
 
       {/* Sticky-поиск (без фильтров) */}

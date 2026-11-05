@@ -47,6 +47,20 @@ try {
   const search = await (await fetch("http://127.0.0.1:3123/api/promocodes?q=" + encodeURIComponent("ДОСТАВКА"))).json();
   assert.ok(search.codes.some((code) => code.code === "TEST-VERIFIED"));
   assert.ok(!search.codes.some((code) => code.code === "MOSCOW-HIDDEN"));
+  const savedExpired = await client.promoOffer.create({ data: {
+    companyId: 54, code: "SAVED-EXPIRED", codeKey: "SAVED-EXPIRED", description: "Истёкшая акция", discount: "10%",
+    status: "official", expiresAt: new Date(Date.now() - 86400001),
+  } });
+  const savedHidden = await client.promoOffer.findFirstOrThrow({ where: { code: "MOSCOW-HIDDEN" } });
+  const savedResponse = await fetch("http://127.0.0.1:3123/api/promocodes/saved?ids=" + encodeURIComponent([savedExpired.id, savedHidden.id, "missing-offer"].join(",")));
+  assert.equal(savedResponse.status, 200);
+  assert.equal(savedResponse.headers.get("cache-control"), "no-store");
+  const saved = await savedResponse.json();
+  assert.equal(saved.codes.find(code => code.id === savedExpired.id).status, "expired");
+  assert.equal(saved.codes.find(code => code.id === savedHidden.id).status, "rejected");
+  assert.deepEqual(saved.missingIds, ["missing-offer"]);
+  assert.equal((await fetch("http://127.0.0.1:3123/api/promocodes/saved?ids=a,")).status, 400);
+
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];

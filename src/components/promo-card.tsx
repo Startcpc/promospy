@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Copy, Check, ExternalLink, ChevronDown } from "lucide-react";
+import { SavePromoButton } from "./save-promo-button";
 import { effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
 
 export function formatPromoDate(time: number) {
@@ -22,10 +23,13 @@ export function PromoCard({ code }: { code: PromoCode }) {
     catch { setCopyError(true); }
   };
   return <article className="self-start rounded-xl border border-border bg-card p-3">
-    <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="block w-full rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Условия ${code.code}`}>
+    <div className="flex items-start gap-2">
+    <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="block min-w-0 flex-1 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Условия ${code.code}`}>
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors[status]}`}>{status === "found" && code.evidence?.method === "source" ? "Актуальность не подтверждена" : statusLabels[status]}</span>
       <span className="mt-2 flex items-center gap-2"><span className={`${expanded ? "" : "line-clamp-2"} flex-1 text-sm font-medium`}>{code.description}</span><ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} /></span>
     </button>
+    <SavePromoButton offer={code} />
+    </div>
     <div className="mt-3 flex items-center gap-2">
       <code className="min-w-0 flex-1 break-all rounded-lg border border-dashed bg-muted/50 px-3 py-2 font-bold">{code.code}</code>
       <button onClick={copy} disabled={status === "expired"} aria-label={`Скопировать ${code.code}`} className="rounded-lg bg-foreground p-3 text-background disabled:opacity-40">

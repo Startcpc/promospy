@@ -1,0 +1,47 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+import type { PromoCode } from "@/lib/promocodes";
+import { MAX_SAVED_PROMOS, parseSavedPromos, SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
+
+const CHANGED_EVENT = "promospy:saved-promos-changed";
+const EMPTY: SavedPromo[] = [];
+let cachedRaw: string | null | undefined;
+let cached: SavedPromo[] = EMPTY;
+const serverSnapshot = () => EMPTY;
+function snapshot() {
+  try {
+    const raw = window.localStorage.getItem(SAVED_PROMOS_KEY);
+    if (raw !== cachedRaw) { cachedRaw = raw; cached = parseSavedPromos(raw); }
+  } catch { /* Reading storage may be disabled; rendering should still work. */ }
+  return cached;
+}
+function subscribe(listener: () => void) {
+  const onStorage = (event: StorageEvent) => { if (event.key === null || event.key === SAVED_PROMOS_KEY) listener(); };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(CHANGED_EVENT, listener);
+  return () => { window.removeEventListener("storage", onStorage); window.removeEventListener(CHANGED_EVENT, listener); };
+}
+const subscribeHydration = () => () => {};
+const clientHydrated = () => true;
+const serverHydrated = () => false;
+export function useSavedPromos() {
+  const items = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
+  const hydrated = useSyncExternalStore(subscribeHydration, clientHydrated, serverHydrated);
+  return { items, hydrated };
+}
+export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId">, save: boolean): string | null {
+  const current = snapshot();
+  const existing = current.some(item => item.id === offer.id);
+  if (existing === save) return null;
+  if (save && current.length >= MAX_SAVED_PROMOS) return `Можно сохранить до ${MAX_SAVED_PROMOS} кодов. Удалите ненужный код и попробуйте снова.`;
+  const next = save ? [{ id: offer.id, companyId: offer.companyId, code: offer.code, savedAt: Date.now() }, ...current]
+    : current.filter(item => item.id !== offer.id);
+  try {
+    const raw = JSON.stringify(next);
+    window.localStorage.setItem(SAVED_PROMOS_KEY, raw);
+    cachedRaw = raw; cached = next;
+    window.dispatchEvent(new Event(CHANGED_EVENT));
+    return null;
+  } catch { return "Не удалось изменить избранное. Разрешите сохранение данных сайта в браузере и попробуйте снова."; }
+}

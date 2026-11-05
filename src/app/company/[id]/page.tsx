@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { getCompanyById, matchesPromoQuery, isActivePromo, visiblePromoCodes, type ScanState } from "@/lib/promocodes";
+import { SavedPromosLink } from "@/components/saved-promos-link";
 import { PromoCard, formatPromoDate } from "@/components/promo-card";
 
 export default function CompanyPromoPage() {
@@ -59,7 +60,10 @@ function CompanyResults({ id }: { id: number }) {
   const codes = visiblePromoCodes(state?.codes ?? [], now).filter((code) => matchesPromoQuery(code, query) && (!onlyVerified || isActivePromo(code, now)));
   const inCooldown = !!state?.nextScan && state.nextScan > now;
   return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
-    <Link href="/" className="mb-5 inline-flex items-center gap-2 text-sm"><ArrowLeft className="h-4 w-4" />Все компании</Link>
+    <nav aria-label="Навигация" className="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <Link href="/" className="inline-flex items-center gap-2 text-sm"><ArrowLeft className="h-4 w-4" />Все компании</Link>
+    <SavedPromosLink />
+    </nav>
     <header className="mb-6 flex items-center gap-4">
       <img src={company.logo} alt="" className="h-20 w-20 rounded-2xl object-contain p-2" style={{ backgroundColor: `#${company.bgColor}` }} />
       <div><h1 className="text-3xl font-bold">Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-sm underline">Сайт магазина</a></div>

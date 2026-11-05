@@ -1,6 +1,6 @@
 {
   "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
@@ -8,7 +8,7 @@
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./scripts/register-ts.mjs --test tests/promos.test.ts tests/queue.test.ts tests/lifecycle.test.ts tests/public-official.test.ts tests/promo-terms.test.ts tests/database-tools.test.mjs",
+    "test": "node --import ./scripts/register-ts.mjs --test tests/promos.test.ts tests/queue.test.ts tests/lifecycle.test.ts tests/public-official.test.ts tests/promo-terms.test.ts tests/database-tools.test.mjs tests/saved-promos.test.ts",
     "test:search": "node --import ./scripts/register-ts.mjs scripts/test-search.ts",
     "test:smoke": "node tests/smoke.mjs",
     "scan:once": "node --env-file=.env --import ./scripts/register-ts.mjs scripts/scan-once.ts",
@@ -19,7 +19,7 @@
     "db:reset": "prisma migrate reset",
     "db:backup": "node --env-file=.env scripts/backup-db.mjs",
     "db:restore": "node --env-file=.env scripts/restore-db.mjs",
-    "test:ui": "node --import ./scripts/register-ts.mjs --test tests/ui-official.test.ts"
+    "test:ui": "node --import ./scripts/register-ts.mjs --test tests/ui-official.test.ts tests/saved-promos-ui.test.ts"
   },
   "engines": {
     "node": ">=24"

@@ -1,0 +1,90 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Heart, RefreshCw } from "lucide-react";
+import { PromoCard, formatPromoDate } from "@/components/promo-card";
+import { SavePromoButton } from "@/components/save-promo-button";
+import { useSavedPromos } from "@/hooks/use-saved-promos";
+import { getCompanyById, isActivePromo, type PromoCode } from "@/lib/promocodes";
+
+type Lookup = { key: string; codes?: PromoCode[]; error?: string; loadedAt?: number };
+export default function SavedPage() {
+  const { items, hydrated } = useSavedPromos();
+  const [query, setQuery] = useState("");
+  const [activeOnly, setActiveOnly] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [lookup, setLookup] = useState<Lookup | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const idsKey = items.map(item => item.id).join(",");
+  const requestKey = `${idsKey}:${retry}`;
+  const current = lookup?.key === requestKey ? lookup : null;
+  const loading = !!items.length && !current;
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (!idsKey) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/promocodes/saved?ids=${encodeURIComponent(idsKey)}`, {
+          cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Не удалось обновить избранное.");
+        if (!Array.isArray(result.codes)) throw new Error("Не удалось прочитать сохранённые предложения.");
+        if (!controller.signal.aborted) setLookup({ key: requestKey, codes: result.codes, loadedAt: Date.now() });
+      } catch (error) {
+        if (!controller.signal.aborted) setLookup({ key: requestKey, error: error instanceof Error ? error.message : "Не удалось обновить избранное." });
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(() => { void load(); }, 30000);
+      }
+    };
+    void load();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [idsKey, requestKey]);
+
+  const byId = new Map((current?.codes ?? []).map(code => [code.id, code]));
+  const filtered = items.filter(item => {
+    const offer = byId.get(item.id);
+    if (activeOnly && (!offer || !isActivePromo(offer, now))) return false;
+    const terms = [item.code, getCompanyById(item.companyId)?.name ?? "", offer?.description ?? "", offer?.discount ?? "", ...(offer?.conditions ?? [])].join(" ").toLocaleLowerCase("ru");
+    return query.trim().toLocaleLowerCase("ru").split(/\s+/).every(word => terms.includes(word));
+  });
+  return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
+    <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Все компании</Link>
+    <header className="mb-6">
+      <h1 className="flex items-center gap-3 text-3xl font-bold"><Heart aria-hidden="true" className="h-7 w-7 text-rose-600" />Избранное{hydrated && items.length > 0 ? ` (${items.length})` : ""}</h1>
+      <p className="mt-3 text-sm text-muted-foreground">Сохранённые коды разных магазинов — в одном месте. Избранное хранится только в этом браузере. Статусы и условия обновляются при открытии страницы и каждые 30 секунд.</p>
+    </header>
+    {!hydrated ? <p role="status">Загружаем избранное…</p> : items.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center">
+      <p className="font-semibold">Пока нет сохранённых кодов</p>
+      <p className="mt-2 text-sm text-muted-foreground">Нажмите сердечко на карточке промокода, чтобы быстро вернуться к нему перед заказом.</p>
+      <Link href="/" className="mt-5 inline-block rounded-lg bg-foreground px-4 py-2 text-sm text-background">Найти промокоды</Link>
+    </div> : <>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <input aria-label="Поиск в избранном" value={query} onChange={event => setQuery(event.target.value)} placeholder="Магазин, код или условия" className="min-w-48 flex-1 rounded-lg border bg-background px-3 py-2 text-sm" />
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={activeOnly} onChange={event => setActiveOnly(event.target.checked)} />Только актуальные</label>
+        <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Обновить статусы</button>
+      </div>
+      {loading && <p role="status" className="mb-4 text-sm text-muted-foreground">Обновляем статусы сохранённых кодов…</p>}
+      {current?.error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{current.error} Сохранённые коды остаются в избранном. Их актуальность сейчас проверить нельзя.</p>}
+      {current?.loadedAt && <p className="mb-4 text-xs text-muted-foreground">Данные обновлены: {formatPromoDate(current.loadedAt)} МСК. Дата проверки источника указана в условиях каждого кода.</p>}
+      {!loading && filtered.length === 0 && <p className="py-8 text-center text-muted-foreground">Нет сохранённых кодов по выбранным условиям.</p>}
+      <div className="grid items-start gap-4 sm:grid-cols-2">{filtered.map(item => {
+        const offer = byId.get(item.id);
+        return <div key={item.id}>
+          <Link href={`/company/${item.companyId}`} className="mb-2 block text-sm font-semibold underline">{getCompanyById(item.companyId)?.name}</Link>
+          {offer ? <PromoCard code={offer} /> : <article className="rounded-xl border bg-card p-3">
+            <div className="flex items-start justify-between gap-3"><code className="min-w-0 break-all rounded-lg bg-muted px-3 py-2 font-bold">{item.code}</code><SavePromoButton offer={item} /></div>
+            <p className="mt-3 text-sm text-muted-foreground">{loading ? "Загружаем условия и статус…" : current?.error ? "Нет свежих данных об этом предложении." : "Предложение больше не найдено. Проверьте новые акции на странице магазина."}</p>
+          </article>}
+        </div>;
+      })}</div>
+    </>}
+  </main>;
+}
