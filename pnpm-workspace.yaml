@@ -1,0 +1,9 @@
+# Explicit dependency build policy for pnpm 11 (Node.js 24+).
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@swc/core': true
+  prisma: true
+  sharp: true
+  es5-ext: false

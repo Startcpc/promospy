@@ -1,0 +1,28 @@
+[Unit]
+Description=PromoSpy web server and background collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=promospy
+Group=promospy
+WorkingDirectory=/opt/promospy
+EnvironmentFile=/etc/promospy.env
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+Environment=PROMO_WORKER_ENABLED=1
+ExecStart=/usr/bin/node scripts/start.mjs
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/promospy
+
+[Install]
+WantedBy=multi-user.target
