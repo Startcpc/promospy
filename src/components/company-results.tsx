@@ -14,7 +14,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
   const [state, setState] = useState<MerchantSearchState>(initialState);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [onlyVerified, setOnlyVerified] = useState(false);
+  const [onlyVerified, setOnlyVerified] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [starting, setStarting] = useState(!initialState.lastScan);
   const [now, setNow] = useState(Date.now());
@@ -53,7 +53,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
   const refresh = () => { void requestRef.current?.(true); };
   if (!company) return <main className="p-8"><p>Компания не найдена</p><Link href="/">На главную</Link></main>;
   const busy = starting || state?.status === "running" || state?.status === "queued";
-  const codes = visiblePromoCodes(state?.codes ?? [], now).filter((code) => matchesPromoQuery(code, query) && (!onlyVerified || effectiveStatus(code, now) !== "expired"));
+  const codes = visiblePromoCodes(state?.codes ?? [], now).filter((code) => matchesPromoQuery(code, query) && (!onlyVerified || effectiveStatus(code, now) !== "expired" && (code.startsAt === undefined || code.startsAt <= now)));
   return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
     <nav aria-label="Навигация" className="mb-5 flex flex-wrap items-center justify-between gap-3">
     <Link href="/" className="inline-flex items-center gap-2 text-sm"><ArrowLeft className="h-4 w-4" />Все компании</Link>
@@ -74,13 +74,14 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
         <button onClick={refresh} disabled={busy || refreshing} className="retro-button inline-flex items-center gap-2 border-2 border-[#16213e] bg-[#ff6b24] px-4 py-2 font-bold text-[#16213e] disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />{busy || refreshing ? "Обновляем…" : "Обновить"}</button>
       </div>
       {error && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
-      {state.notice && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
+      {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
       {state?.report && <p className="mt-3 text-base">Прочитано страниц: {state.report.pagesRead}.</p>}
       {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
         <div className="mt-3 space-y-2">
           {state.lastScan && <p>Результаты получены: {formatPromoDate(state.lastScan)} МСК</p>}
           {error && <p>{error}</p>}
-          {state.report?.issues?.map(issue => <p key={issue.url}>{new URL(issue.url).hostname}: {issue.reason}</p>)}
+          {state.report?.sourceResults?.map(source => <p key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">{new URL(source.url).hostname}</a>: {source.outcome === "codes" ? `найдено ${source.count}` : source.outcome === "empty" ? "на странице указано, что промокодов нет" : source.outcome === "index" ? "страница магазина" : source.message ?? "не удалось разобрать"}</p>)}
+          {!state.report?.sourceResults && state.report?.issues?.map(issue => <p key={issue.url}>{new URL(issue.url).hostname}: {issue.reason}</p>)}
           <p>Истёкшие и отклонённые коды скрываются через 24 часа.</p>
           {state.report && <p>Сайтов к чтению: {state.report.discoveredSites}. Цель — до {state.report.targetSites}.</p>}
           {state.report?.warnings.map(warning => <p key={warning}>{warning}</p>)}
@@ -94,7 +95,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
     </div>
     {!state && !error ? <p className="py-10 text-center text-muted-foreground">Загружаем результаты…</p>
       : codes.length ? <div className="grid gap-4 sm:grid-cols-2">{codes.map((code) => <PromoCard key={code.id} code={code} />)}</div>
-        : <p className="py-10 text-center text-muted-foreground">{query || onlyVerified ? "Нет промокодов по выбранным условиям." : busy ? "Найденные коды появятся здесь автоматически." : "Открытых промокодов пока не найдено. Можно посмотреть акции на сайте магазина."}</p>}
+        : <p role="status" className="py-10 text-center text-muted-foreground">{busy ? "Найденные коды появятся здесь автоматически." : state.status === "failed" ? state.notice : query || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p>}
     <details className="mt-8 border-t pt-4"><summary className="cursor-pointer text-base font-bold">О компании</summary><p className="mt-3 text-base text-muted-foreground">{company.description}</p></details>
   </main>;
 }

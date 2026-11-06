@@ -30,13 +30,17 @@ export async function searchState(id: number): Promise<MerchantSearchState> {
     status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:result?.at ?? null,
     nextScan:failure?.retry ?? (result ? result.at + 15*60000 : null),error:null,log:[],
     ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
-    ...(failure ? {notice:result ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : 'Свежих предложений пока нет. Посмотрите акции на сайте магазина.'} : {}),
+    ...(failure ? {notice:result?.report.codes.length ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : failure.report?.pagesRead ? 'Страницы загрузились, но извлечь промокоды не удалось. Можно повторить поиск.' : 'Источники не загрузились. Можно повторить поиск.'} : {}),
   };
 }
 async function persist(id: number, report: SearchReport) {
   const previous = await cached(id);
   // A failed source cannot erase its last known offers or renew their confirmation.
-  const retained = (previous?.report.codes ?? []).filter(code => code.sources.length && code.sources.every(source => !report.visited.includes(source.url)))
+  const sourceKey = (value: string) => {
+    try {const url = new URL(value);url.hash='';url.hostname=url.hostname.replace(/^www\./,'');url.pathname=url.pathname.replace(/\/$/,'')||'/';return url.href;}catch{return value;}
+  };
+  const refreshed = new Set((report.parsedUrls ?? report.visited).map(sourceKey));
+  const retained = (previous?.report.codes ?? []).filter(code => code.sources.length && code.sources.every(source => !refreshed.has(sourceKey(source.url))))
     .map(code => ({...code,status:code.status === 'expired' ? 'expired' as const : 'found' as const}));
   const item: Cached = {companyId:id,at:Date.now(),report:{...report,codes:mergeWithSaved(report.codes,retained)}};
   await mkdir(directory(),{recursive:true});
@@ -51,8 +55,9 @@ function drain() {
     void (async () => {
       try {
         const report = await job.execute(getCompanyById(job.id)!,AbortSignal.timeout(90000),undefined,progress => {job.report = progress;});
-        if (!report.pagesRead) {
-          failures.set(job.id,{message:'Источники не вернули страницы',retry:Date.now()+60000,report});
+        const understood = !report.sourceResults || report.sourceResults.some(source => source.outcome === 'codes' || source.outcome === 'empty');
+        if (!report.pagesRead || !understood) {
+          failures.set(job.id,{message:report.pagesRead ? 'Не распознана разметка источников' : 'Источники не вернули страницы',retry:Date.now()+60000,report});
         } else { await persist(job.id,report); failures.delete(job.id); }
       } catch (error) {
         if (job.report?.pagesRead) await persist(job.id,job.report).catch(() => {});
@@ -64,7 +69,8 @@ function drain() {
 export async function requestSearch(id: number, execute = searchMerchant, force = false): Promise<MerchantSearchState> {
   if (!getCompanyById(id)) throw new Error('Магазин не найден');
   const state = await searchState(id);
-  if (jobs.has(id) || !force && state.nextScan && state.nextScan > Date.now()) return state;
+  const oldParserCache = state.report && !state.report.sourceResults;
+  if (jobs.has(id) || !force && !oldParserCache && state.nextScan && state.nextScan > Date.now()) return state;
   failures.delete(id); jobs.set(id,{id,execute,status:'queued'}); drain();
   return {...state,status:jobs.get(id)?.status ?? 'running',error:null,notice:undefined};
 }

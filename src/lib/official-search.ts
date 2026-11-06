@@ -8,7 +8,7 @@ export const PUBLIC_OFFICIAL_URLS: Record<number, string> = {
   54: "https://vkusvill.ru/promocodes/",
   201: "https://promo.magnit.ru/",
 };
-const text = (value: string) => value.replace(/\s+/g, " ").trim();
+const text = (value: string) => value.replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim();
 function officialCode(companyId: number, code: string, discount: string, conditions: string[], now: number): PromoCode {
   if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(code)) throw new Error("Изменился формат официального кода");
   const sourceUrl = PUBLIC_OFFICIAL_URLS[companyId];
@@ -30,7 +30,7 @@ export function parsePublicOfficial(companyId: number, html: string, now = Date.
   $("script,style,noscript").remove();
   const codes: PromoCode[] = [];
   if (companyId === 54) {
-    if (!$("h1").text().includes("Промокоды ВкусВилл")) throw new Error("Не распознана страница промокодов ВкусВилл");
+    if (!/промокоды\s+вкус\s*вилл/i.test(text($("h1").text()))) throw new Error("Не распознана страница промокодов ВкусВилл");
     const cards = $(".js-vv21-promocode-item");
     if (!cards.length || cards.length > 100) throw new Error("Не распознан список промокодов ВкусВилл");
     cards.each((_, element) => {
@@ -39,11 +39,12 @@ export function parsePublicOfficial(companyId: number, html: string, now = Date.
       const button = text(card.find(".js-vv21-promocode-item__btn").text());
       const discount = text(card.find(".VV21_PromocodesCode__Title").text());
       const terms = [...new Set(card.find(".subtitle").not(".js-vv21-promocode-item__text-success").map((_, e) => text($(e).text())).get().filter(Boolean))];
-      if (!code || code !== button || !/\d+.*(?:руб|₽|%)/.test(discount) || !terms.length) throw new Error("Неполная карточка ВкусВилл; обновление отменено");
+      const buttonIsCode = /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(button) && !/^(скопировать|копировать|copy)$/i.test(button);
+      if (!code || buttonIsCode && code !== button || !/\d+.*(?:руб|₽|%)/.test(discount) || !terms.length) throw new Error("Неполная карточка ВкусВилл; обновление отменено");
       codes.push(officialCode(companyId, code, discount, terms, now));
     });
   } else if (companyId === 201) {
-    if (!$("title").text().includes("Промокоды Магнит")) throw new Error("Не распознана страница промокодов Магнит");
+    if (!/промокоды\s+магнит/i.test(text($("title").text()))) throw new Error("Не распознана страница промокодов Магнит");
     // The official landing has one promotion per Tilda record, with a standalone «Промокод» label.
     $(".t-rec").each((_, element) => {
       const record = $(element);
@@ -53,7 +54,9 @@ export function parsePublicOfficial(companyId: number, html: string, now = Date.
         return text(fragment.root().text());
       }).get().filter(Boolean);
       if (!atoms.includes("Промокод")) return;
-      const buttons = [...new Set(record.find(".tn-atom__button-text").map((_, e) => text($(e).text())).get().filter(Boolean))];
+      const codeAfterLabel = atoms[atoms.indexOf("Промокод") + 1];
+      const buttons = [...new Set(record.find(".tn-atom__button-text").map((_, e) => text($(e).text())).get().filter(value => /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value)))];
+      if (!buttons.length && /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(codeAfterLabel ?? "")) buttons.push(codeAfterLabel);
       const discounts = atoms.filter(value => /^[−–-]?\d[\d\s]*(?:[.,]\d{1,2})?\s*(?:%|₽|руб\.?|рублей)$/i.test(value));
       const terms = atoms.filter(value => /^Скидка на /i.test(value));
       const services = atoms.filter(value => /^в Магнит /i.test(value));

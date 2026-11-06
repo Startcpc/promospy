@@ -43,6 +43,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
     </div>
     {copied && <p role="status" className="mt-2 text-xs text-blue-700">Код скопирован</p>}
     {copyError && <p role="alert" className="mt-2 text-xs text-red-600">Не удалось скопировать. Выделите код вручную.</p>}
+    {code.sources[0] && <a href={code.sources[0].url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm text-blue-800 underline">{code.sources[0].name}<ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
     <div id={detailsId} hidden={!expanded}>
     <p className="mt-3 text-lg font-bold">{code.discount}</p>
     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
@@ -58,7 +59,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
       {code.evidence && <p>{[code.evidence.region, code.evidence.accountType, code.evidence.cart].filter(Boolean).join(" · ")}</p>}
       {status === "verified" && <p>Результат относится к указанным условиям тестовой корзины.</p>}
       {status === "official" && <p>Актуален по последней успешной проверке официальной публикации. Статус снимается при подтверждённом исчезновении акции или истечении указанного срока.</p>}
-      <div className="flex flex-wrap gap-2 pt-1">{code.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+      <div className="flex flex-wrap gap-2 pt-1">{code.sources.slice(1).map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
         {source.name}<ExternalLink className="h-3 w-3" />
       </a>)}</div>
     </div>

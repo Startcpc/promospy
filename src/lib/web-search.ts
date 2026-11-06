@@ -6,6 +6,7 @@ import type { Company } from './companies';
 import type { PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml } from './promo-parser';
 import { parsePublicOfficial, PUBLIC_OFFICIAL_URLS } from './official-search';
+import { extractCouponCards, isChallengePage, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
 // Respect server proxy/CA settings; direct fetch otherwise ignores HTTPS_PROXY.
@@ -14,12 +15,14 @@ else if (process.env.HTTPS_PROXY || process.env.https_proxy) {
   const { EnvHttpProxyAgent, setGlobalDispatcher } = createRequire(import.meta.url)('undici') as typeof import('undici');
   setGlobalDispatcher(new EnvHttpProxyAgent());
 }
-export const SEARCH_DOMAINS = ['promokod.pikabu.ru','promokodi.ru','promokodus.com','promkod.ru','promokod.vbr.ru','berikod.ru','promokod.ru','pepper.ru','skidkidor.ru','kupon.ru','biglion.ru','gilmon.ru','kuponator.ru','kuponation.ru','picodi.com','megabonus.com','backit.me','letyshops.com','kp.ru','aif.ru','banki.ru','sravni.ru','t-j.ru','dtf.ru','vc.ru','ixbt.com','otzovik.com','irecommend.ru','zen.yandex.ru'];
+export const SEARCH_DOMAINS = ['promokod.pikabu.ru','promokodi.ru','promokodus.com','promkod.ru','promokod.vbr.ru','berikod.ru','promokod.ru','pepper.ru','skidkidor.ru','kupon.ru','biglion.ru','gilmon.ru','kuponator.ru','kuponation.ru','picodi.com','megabonus.com','backit.me','letyshops.com','kp.ru','aif.ru','banki.ru','sravni.ru','t-j.ru','dtf.ru','vc.ru','ixbt.com','otzovik.com','getcashback.ru','zen.yandex.ru'];
 export type SearchReport = {
   codes: PromoCode[]; targetSites: number; discoveredSites: number;
   pagesRead: number; pagesFailed: number; visited: string[]; warnings: string[];
   phase?: 'official' | 'sources' | 'complete'; officialPagesRead?: number;
   issues?: { url: string; reason: string }[];
+  parsedUrls?: string[];
+  sourceResults?: { url: string; official: boolean; outcome: 'codes' | 'empty' | 'index' | 'unrecognized' | 'blocked' | 'error'; count: number; message?: string }[];
 };
 export type SearchProgress = (report: SearchReport) => void;
 function host(value: string) { return new URL(value).hostname.replace(/^www\./, ''); }
@@ -47,7 +50,7 @@ export function routedThroughProxy(url: string, env: Record<string,string | unde
   });
 }
 export async function readPublicPage(url: string, domains: string[], signal: AbortSignal): Promise<string> {
-  const bounded = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
+  const bounded = AbortSignal.any([signal, AbortSignal.timeout(12000)]);
   for (let hop = 0; hop < 4; hop++) {
     if (!safeSource(url, domains)) throw new Error('Адрес вне списка источников');
     bounded.throwIfAborted();
@@ -61,7 +64,7 @@ export async function readPublicPage(url: string, domains: string[], signal: Abo
     });
     if (!records.length || records.some(record => privateAddress(record.address))) throw new Error('Непубличный адрес');
     }
-    const response = await fetch(url,{redirect:'manual',signal:bounded,headers:{'User-Agent':'PromoSpy/0.8 public coupon search','Accept':'text/html,application/rss+xml,application/xml','Accept-Language':'ru-RU'}});
+    const response = await fetch(url,{redirect:'manual',signal:bounded,headers:{'User-Agent':'PromoSpy/0.8.1 public coupon search','Accept':'text/html,application/rss+xml,application/xml','Accept-Language':'ru-RU'}});
     if ([301,302,303,307,308].includes(response.status)) {
       const target = response.headers.get('location'); await response.body?.cancel();
       if (!target) throw new Error('Перенаправление без адреса');
@@ -76,7 +79,7 @@ export async function readPublicPage(url: string, domains: string[], signal: Abo
     try {
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
-        bytes += value.length; if (bytes > 2_000_000) throw new Error('Страница превышает лимит размера');
+        bytes += value.length; if (bytes > 6_000_000) throw new Error('Страница превышает лимит размера');
         chunks.push(value);
       }
     } finally { await reader.cancel().catch(() => {}); }
@@ -88,22 +91,15 @@ export function parseDiscovery(xml: string, domains: string[]): string[] {
   const $ = load(xml,{xmlMode:true});
   return [...new Set($('item > link').map((_,el) => $(el).text().trim()).get().filter(url => safeSource(url,domains)))];
 }
-export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now()): PromoCode[] {
-  const $ = load(html); $('script[type!="application/ld+json"],style,noscript').remove();
-  const heading = $('title,h1').text().toLocaleLowerCase('ru').replace(/[^\p{L}\p{N}]/gu,'');
-  const aliases = [company.name,...company.keywords].map(name => name.toLocaleLowerCase('ru').replace(/[^\p{L}\p{N}]/gu,''));
-  if (host(url) !== host(company.website) && !aliases.some(alias => alias.length >= 4 && heading.includes(alias))) return [];
-  const result = parsePromoCodesFromHtml(html,url,company.id,now);
-  $('article,.coupon,.promocode,[data-coupon],[data-offer]').each((_,el) => {
-    const card = $(el); if (card.find('article,.coupon,.promocode,[data-coupon],[data-offer]').length) return;
-    card.find('p,h2,h3,li,div').append(' '); card.find('br').replaceWith(' ');
-    const content = card.text().replace(/\s+/g,' ').trim();
-    const match = content.match(/(?:промокод|код купона)\s*[:：]\s*([\p{L}\p{N}][\p{L}\p{N}_-]{1,63})(?![\p{L}\p{N}_-])/iu);
-    if (!match) return;
-    result.push(...parsePromoCodesFromHtml(JSON.stringify([{promoCode:match[1],title:card.find('h2,h3').first().text() || `Промокод ${company.name}`,conditions:[content.slice(0,1000)]}]),url,company.id,now));
-  });
+export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now(), official = false): PromoCode[] {
+  const scoped = merchantContent(html), $ = load(scoped);
+  const ownHost = host(url) === host(company.website);
+  if (!official && !ownHost && !matchesMerchant($('h1').first().text() || $('title').text(),company)) return [];
+  const result = parsePromoCodesFromHtml(scoped,url,company.id,now);
+  result.push(...extractCouponCards(scoped,url,company,now,official || ownHost));
   return result.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'found',checked:undefined,evidence:undefined,validUntil:undefined,verificationDetails:'Найдено в открытом источнике. Применение не проверялось.'}));
 }
+
 const slugs: Record<number,string> = {5:'burger-king',54:'vkusvill',102:'vkusno-i-tochka',201:'magnit',202:'pyaterochka',203:'yandex-lavka',204:'yandex-market',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
 export function officialUrls(company: Company): string[] {
   const primary = PUBLIC_OFFICIAL_URLS[company.id] ?? ({5:'https://burgerkingrus.ru/coupons/',302:'https://www.kartoshka.com/actions/'} as Record<number,string>)[company.id];
@@ -132,7 +128,7 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
   signal.throwIfAborted();
   const initial = officialUrls(company), officialDomains = [...new Set(initial.map(host))];
   const domains = [...new Set([...officialDomains,...SEARCH_DOMAINS])];
-  const report: SearchReport = {codes:[],targetSites:30,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],phase:'official',officialPagesRead:0};
+  const report: SearchReport = {codes:[],targetSites:30,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0};
   const attempted = new Set<string>();
   const publish = () => {
     report.codes = mergeCodes(report.codes,company.id);
@@ -144,18 +140,28 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
     attempted.add(url);
     try {
       const html = await read(url,official ? officialDomains : domains,stageSignal);
-      if (/captcha|cf-chl-|проверка браузера|подтвердите.{0,25}не робот/i.test(html.slice(0,15000))) throw new Error('Сайт запросил проверку браузера');
+      if (isChallengePage(html)) {
+        report.sourceResults!.push({url,official,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера'});
+        throw new Error('Сайт запросил проверку браузера');
+      }
       report.pagesRead++; report.visited.push(url);
       if (official) report.officialPagesRead!++;
       let codes: PromoCode[];
       try {
         if (!official || url !== PUBLIC_OFFICIAL_URLS[company.id]) throw new Error('generic');
         codes = parsePublicOfficial(company.id,html);
-      } catch { codes = parseMerchantPage(html,url,company); }
+      } catch { codes = parseMerchantPage(html,url,company,Date.now(),official); }
       if (official) codes = codes.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'official',checked:Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение не проверялось.',evidence:{method:'source',observedAt:Date.now(),sourceUrl:url,message:'Официальная публикация'}}));
+      const empty = explicitEmpty(html);
+      const isIndex = !codes.length && !empty && url.replace(/\/$/,'') === company.website.replace(/\/$/,'');
+      const outcome = codes.length ? 'codes' : empty ? 'empty' : isIndex ? 'index' : 'unrecognized';
+      report.sourceResults!.push({url,official,outcome,count:codes.length,...(outcome === 'unrecognized' ? {message:'Страница загружена, но разметка промокодов не распознана'} : {})});
+      if (codes.length || empty) report.parsedUrls!.push(url);
+      if (outcome === 'unrecognized') report.issues!.push({url,reason:'Не распознана разметка промокодов'});
       report.codes.push(...codes); publish(); return html;
     } catch (error) {
       report.pagesFailed++;
+      if (!report.sourceResults!.some(source => source.url === url)) report.sourceResults!.push({url,official,outcome:'error',count:0,message:error instanceof Error ? error.message : 'Ошибка загрузки'});
       report.issues!.push({url,reason:error instanceof Error ? error.message : 'Не удалось прочитать страницу'});
       publish(); return null;
     }
@@ -173,7 +179,7 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
   signal.throwIfAborted();
   report.phase = 'sources'; publish();
   const slug = slugs[company.id];
-  const known = [`https://promokod.pikabu.ru/shops/${slug}`,`https://promokodi.ru/store/${slug}`,`https://promokodus.com/campaigns/${slug}`];
+  const known = [`https://promokod.pikabu.ru/shops/${slug}`,`https://promokodi.ru/store/${slug}/`,[54,201].includes(company.id) ? `https://getcashback.ru/promocodes/${slug}/` : `https://promokodus.com/campaigns/${slug}`];
   // Known pages start immediately; RSS discovery cannot hold them up.
   const knownJob = Promise.all(known.map(url => visit(url,false,signal)));
   const discovered = new Set<string>(); let discoveryCursor = 0, discoveryFailures = 0;

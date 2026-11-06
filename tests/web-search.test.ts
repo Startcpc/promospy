@@ -55,7 +55,7 @@ test('23: failed official site falls through to readable third-party pages',asyn
 });
 test('24: a single broken coupon source cannot discard other results',async()=>{
  const report=await searchMerchant(company,new AbortController().signal,async target=>{
-  if(target.includes('promokodus'))throw Error('HTTP 404');return target.includes('bing.com')?'<rss/>':html;
+  if(target.includes('getcashback'))throw Error('HTTP 404');return target.includes('bing.com')?'<rss/>':html;
  });
  assert.equal(report.codes.length,1);assert.equal(report.pagesFailed,1);assert.equal(report.phase,'complete');
 });
