@@ -58,7 +58,7 @@ export default function SavedPage() {
   return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
     <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Все компании</Link>
     <header className="mb-6">
-      <h1 className="flex items-center gap-3 text-3xl font-bold"><Heart aria-hidden="true" className="h-7 w-7 text-rose-600" />Избранное{hydrated && items.length > 0 ? ` (${items.length})` : ""}</h1>
+      <h1 className="flex items-center gap-3 text-3xl font-bold"><Heart aria-hidden="true" className="h-7 w-7 text-orange-600" />Избранное{hydrated && items.length > 0 ? ` (${items.length})` : ""}</h1>
       <p className="mt-3 text-sm text-muted-foreground">Сохранённые коды разных магазинов — в одном месте. Избранное хранится только в этом браузере. Статусы и условия обновляются при открытии страницы и каждые 30 секунд.</p>
     </header>
     {!hydrated ? <p role="status">Загружаем избранное…</p> : items.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center">

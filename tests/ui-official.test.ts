@@ -56,6 +56,7 @@ test("official cards: conditions, future filter, monitoring errors and mobile la
       mkdirSync("test-results", { recursive: true });
       await page.screenshot({ path: `test-results/${name}-mobile.png`, fullPage: true });
     }
+    await page.route(/\/api\/promocodes\?/, route => route.fulfill({ json: { codes: [], hasMore: false } }));
     await page.goto(`${origin}/`, { waitUntil: "networkidle" });
     await page.setViewportSize({ width: 1280, height: 1000 });
     await page.screenshot({ path: "test-results/home-redesign.png", fullPage: true });

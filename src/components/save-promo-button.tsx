@@ -14,7 +14,7 @@ export function SavePromoButton({ offer }: { offer: Pick<PromoCode, "id" | "code
       aria-label={`${saved ? "Удалить из избранного" : "Сохранить"} ${offer.code}`}
       title={saved ? "Удалить из избранного" : "Сохранить в избранное"}
       onClick={() => setError(setPromoSaved(offer, !saved))}
-      className={`rounded-lg border p-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40 ${saved ? "border-rose-200 bg-rose-50 text-rose-700" : "text-muted-foreground hover:bg-muted"}`}>
+      className={`rounded-lg border p-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40 ${saved ? "border-orange-200 bg-orange-50 text-orange-700" : "text-muted-foreground hover:bg-muted"}`}>
       <Heart aria-hidden="true" className={`h-4 w-4 ${saved ? "fill-current" : ""}`} />
     </button>
     {error && <p role="alert" className="mt-2 max-w-48 text-xs text-red-600">{error}</p>}

@@ -92,6 +92,41 @@ test("saved codes survive reload, sync tabs, refresh expiry and never reuse stal
     await page.getByRole("button", { name: "Удалить из избранного ДОСТАВКА25", exact: true }).click();
     await page.getByText("Пока нет сохранённых кодов", { exact: true }).waitFor();
     await second.getByRole("link", { name: "Избранное", exact: true }).waitFor();
+    // Changing a query must immediately hide the previous query's cards and pagination.
+    let releaseSearch!: () => void;
+    const heldSearch = new Promise<void>(resolve => { releaseSearch = resolve; });
+    let searchFailure = true;
+    await page.route(/\/api\/promocodes\?/, async route => {
+      const query = new URL(route.request().url()).searchParams.get("q");
+      if (query === "новый запрос") {
+        await heldSearch;
+        return route.fulfill({ json: { codes: [{ ...codes[1], description: "Новый результат" }], hasMore: false } });
+      }
+      if (query === "ошибка" && searchFailure) return route.fulfill({ status: 503, json: { error: "Временная ошибка поиска" } });
+      return route.fulfill({ json: { codes, hasMore: true } });
+    });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto(`${origin}/`, { waitUntil: "networkidle" });
+    assert.equal(await page.locator("article").count(), 2);
+    await page.getByRole("button", { name: "Следующие →", exact: true }).waitFor();
+    await page.getByLabel("Поиск предложений", { exact: true }).fill("новый запрос");
+    await page.waitForFunction(() => document.querySelectorAll("article").length === 0);
+    assert.equal(await page.getByRole("button", { name: "Следующие →", exact: true }).count(), 0);
+    releaseSearch();
+    await page.getByText("Новый результат", { exact: true }).waitFor();
+    assert.equal(await page.locator("article").count(), 1);
+    await page.getByLabel("Поиск предложений", { exact: true }).fill("ошибка");
+    await page.getByRole("alert").filter({ hasText: "Временная ошибка поиска" }).waitFor();
+    assert.equal(await page.locator("article").count(), 0);
+    searchFailure = false;
+    await page.getByRole("button", { name: "Повторить поиск", exact: true }).click();
+    await page.getByRole("button", { name: "Скопировать 1раз", exact: true }).waitFor();
+    assert.equal(await page.locator("article").count(), 2);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+    await page.getByRole("button", { name: "Скопировать 1раз", exact: true }).click();
+    await page.getByText("Код скопирован", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "1раз");
+    await page.getByText("Код скопирован", { exact: true }).waitFor({ state: "hidden", timeout: 5000 });
     assert.deepEqual(errors, []);
     await context.close();
     // A disabled storage API must show a failure instead of claiming the code was saved.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Copy, Check, ExternalLink, ChevronDown } from "lucide-react";
 import { SavePromoButton } from "./save-promo-button";
 import { currentCartCheck, effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
@@ -13,6 +13,11 @@ export function PromoCard({ code }: { code: PromoCode }) {
   const [copyError, setCopyError] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   const status = effectiveStatus(code);
   const cartCheck = currentCartCheck(code);
   const colors = {
@@ -20,10 +25,10 @@ export function PromoCard({ code }: { code: PromoCode }) {
     expired: "bg-gray-100 text-gray-600", unavailable: "bg-amber-100 text-amber-800",
   };
   const copy = async () => {
-    try { await navigator.clipboard.writeText(code.code); setCopied(true); setCopyError(false); }
+    try { setCopied(false); await navigator.clipboard.writeText(code.code); setCopied(true); setCopyError(false); }
     catch { setCopyError(true); }
   };
-  return <article className="self-start rounded-2xl border border-[#dce3d6] bg-white p-4 text-[#243d30] shadow-[0_3px_15px_-10px_rgba(30,65,40,0.12)]">
+  return <article className="self-start rounded-2xl border border-[#dce7f9] bg-white p-4 text-[#11254b] shadow-[0_3px_15px_-10px_rgba(29,78,216,0.12)]">
     <div className="flex items-start gap-2">
     <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="block min-w-0 flex-1 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Условия ${code.code}`}>
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors[status]}`}>{status === "found" && code.evidence?.method === "source" ? "Актуальность не подтверждена" : statusLabels[status]}</span>
@@ -32,8 +37,8 @@ export function PromoCard({ code }: { code: PromoCode }) {
     <SavePromoButton offer={code} />
     </div>
     <div className="mt-3 flex items-center gap-2">
-      <code className="min-w-0 flex-1 break-all rounded-xl border border-dashed border-[#b9cbb0] bg-[#f1f5ec] px-3 py-2 font-bold">{code.code}</code>
-      <button onClick={copy} disabled={status === "expired"} aria-label={`Скопировать ${code.code}`} className="rounded-lg bg-[#214d3c] p-3 text-white disabled:opacity-40">
+      <code className="min-w-0 flex-1 break-all rounded-xl border border-dashed border-[#a9c8ff] bg-[#eff6ff] px-3 py-2 font-bold">{code.code}</code>
+      <button onClick={copy} disabled={status === "expired"} aria-label={`Скопировать ${code.code}`} className="rounded-lg bg-[#1d4ed8] p-3 text-white disabled:opacity-40">
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
       </button>
     </div>
@@ -42,6 +47,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
       <p>{cartCheck.details}</p>
       <p className="mt-1 text-muted-foreground">{formatPromoDate(cartCheck.observedAt)} МСК</p>
     </div>}
+    {copied && <p role="status" className="mt-2 text-xs text-blue-700">Код скопирован</p>}
     {copyError && <p role="alert" className="mt-2 text-xs text-red-600">Не удалось скопировать. Выделите код вручную.</p>}
     <div id={detailsId} hidden={!expanded}>
     <p className="mt-3 text-lg font-bold">{code.discount}</p>
