@@ -6,7 +6,7 @@ import { ArrowLeft, Heart, RefreshCw } from "lucide-react";
 import { PromoCard, formatPromoDate } from "@/components/promo-card";
 import { SavePromoButton } from "@/components/save-promo-button";
 import { useSavedPromos } from "@/hooks/use-saved-promos";
-import { getCompanyById, isActivePromo, type PromoCode } from "@/lib/promocodes";
+import { getCompanyById, effectiveStatus, type PromoCode } from "@/lib/promocodes";
 
 type Lookup = { key: string; codes?: PromoCode[]; error?: string; loadedAt?: number };
 export default function SavedPage() {
@@ -50,8 +50,8 @@ export default function SavedPage() {
 
   const byId = new Map((current?.codes ?? []).map(code => [code.id, code]));
   const filtered = items.filter(item => {
-    const offer = byId.get(item.id);
-    if (activeOnly && (!offer || !isActivePromo(offer, now))) return false;
+    const offer = byId.get(item.id) ?? item.snapshot;
+    if (activeOnly && (!offer || effectiveStatus(offer, now) === "expired")) return false;
     const terms = [item.code, getCompanyById(item.companyId)?.name ?? "", offer?.description ?? "", offer?.discount ?? "", ...(offer?.conditions ?? [])].join(" ").toLocaleLowerCase("ru");
     return query.trim().toLocaleLowerCase("ru").split(/\s+/).every(word => terms.includes(word));
   });
@@ -68,18 +68,18 @@ export default function SavedPage() {
     </div> : <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input aria-label="Поиск в избранном" value={query} onChange={event => setQuery(event.target.value)} placeholder="Магазин, код или условия" className="min-w-48 flex-1 rounded-lg border bg-background px-3 py-2 text-sm" />
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={activeOnly} onChange={event => setActiveOnly(event.target.checked)} />Только актуальные</label>
-        <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Обновить статусы</button>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={activeOnly} onChange={event => setActiveOnly(event.target.checked)} />Без истёкших</label>
+        <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Обновить данные</button>
       </div>
       {loading && <p role="status" className="mb-4 text-sm text-muted-foreground">Обновляем статусы сохранённых кодов…</p>}
       {current?.error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{current.error} Сохранённые коды остаются в избранном. Их актуальность сейчас проверить нельзя.</p>}
       {current?.loadedAt && <p className="mb-4 text-xs text-muted-foreground">Обновлено: {formatPromoDate(current.loadedAt)} МСК</p>}
       {!loading && filtered.length === 0 && <p className="py-8 text-center text-muted-foreground">Нет сохранённых кодов по выбранным условиям.</p>}
       <div className="grid items-start gap-4 sm:grid-cols-2">{filtered.map(item => {
-        const offer = byId.get(item.id);
+        const offer = byId.get(item.id) ?? item.snapshot;
         return <div key={item.id}>
           <Link href={`/company/${item.companyId}`} className="mb-2 block text-sm font-semibold underline">{getCompanyById(item.companyId)?.name}</Link>
-          {offer ? <PromoCard code={offer} /> : <article className="rounded-xl border bg-card p-3">
+          {offer ? <><p className="mb-2 text-sm text-muted-foreground">{byId.has(item.id) ? "Найдено на сайтах. Применение не проверялось." : "Сохранённая копия — без подтверждения актуальности."}</p><PromoCard code={offer} /></> : <article className="rounded-xl border bg-card p-3">
             <div className="flex items-start justify-between gap-3"><code className="min-w-0 break-all rounded-lg bg-muted px-3 py-2 font-bold">{item.code}</code><SavePromoButton offer={item} /></div>
             <p className="mt-3 text-sm text-muted-foreground">{loading ? "Загружаем условия и статус…" : current?.error ? "Нет свежих данных об этом предложении." : "Предложение больше не найдено. Проверьте новые акции на странице магазина."}</p>
           </article>}

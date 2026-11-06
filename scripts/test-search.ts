@@ -1,6 +1,6 @@
 /**
  * Тесты для умного поиска.
- * Запуск: npx tsx scripts/test-search.ts
+ * Запуск: pnpm test:search
  */
 import { searchCompanies } from "../src/lib/search";
 
@@ -91,7 +91,8 @@ const cases: Case[] = [
   {
     name: "пустой запрос → все компании",
     query: "",
-    expectCount: 12, // всего 12 компаний
+    expectCount: 13,
+    mustInclude: ["Крошка Картошка"],
   },
   // === 13. Опечатка в «магнит» ===
   {

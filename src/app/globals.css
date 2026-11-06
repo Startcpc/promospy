@@ -324,3 +324,8 @@ html { scroll-behavior: smooth; }
  .animated-word > span { opacity: 1; animation: none; }
  .merchant-card:hover, .retro-brand:hover, .retro-button:hover, .retro-filter:hover, .retro-poster:hover .retro-star, .retro-poster:hover .retro-stamp, .animated-word > span:hover .letter-ink { transform: none; }
 }
+
+/* Decorative layers move; actual buttons and links keep a stable click target. */
+.retro-button:hover:not(:disabled), .retro-filter:hover, .retro-button:active:not(:disabled), .retro-filter:active, .merchant-card:hover { transform: none; }
+.merchant-card:hover img { transform: scale(1.06); transition: transform .18s; }
+@media (prefers-reduced-motion: reduce) { .merchant-card:hover img { transform: none; } }

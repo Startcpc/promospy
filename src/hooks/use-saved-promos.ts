@@ -8,8 +8,10 @@ const CHANGED_EVENT = "promospy:saved-promos-changed";
 const EMPTY: SavedPromo[] = [];
 let cachedRaw: string | null | undefined;
 let cached: SavedPromo[] = EMPTY;
+let memoryOnly = false;
 const serverSnapshot = () => EMPTY;
 function snapshot() {
+  if (memoryOnly) return cached;
   try {
     const raw = window.localStorage.getItem(SAVED_PROMOS_KEY);
     if (raw !== cachedRaw) { cachedRaw = raw; cached = parseSavedPromos(raw); }
@@ -30,18 +32,24 @@ export function useSavedPromos() {
   const hydrated = useSyncExternalStore(subscribeHydration, clientHydrated, serverHydrated);
   return { items, hydrated };
 }
-export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId">, save: boolean): string | null {
+export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId"> & Partial<PromoCode>, save: boolean): string | null {
   const current = snapshot();
   const existing = current.some(item => item.id === offer.id);
   if (existing === save) return null;
   if (save && current.length >= MAX_SAVED_PROMOS) return `Можно сохранить до ${MAX_SAVED_PROMOS} кодов. Удалите ненужный код и попробуйте снова.`;
-  const next = save ? [{ id: offer.id, companyId: offer.companyId, code: offer.code, savedAt: Date.now() }, ...current]
+  const next = save ? [{ id: offer.id, companyId: offer.companyId, code: offer.code, savedAt: Date.now(), snapshot: offer }, ...current]
     : current.filter(item => item.id !== offer.id);
   try {
-    const raw = JSON.stringify(next);
+    const validated = parseSavedPromos(JSON.stringify(next));
+    if (validated.length !== next.length) return "Список слишком большой. Удалите несколько кодов.";
+    const raw = JSON.stringify(validated);
     window.localStorage.setItem(SAVED_PROMOS_KEY, raw);
-    cachedRaw = raw; cached = next;
+    cachedRaw = raw; cached = validated;
     window.dispatchEvent(new Event(CHANGED_EVENT));
     return null;
-  } catch { return "Не удалось изменить избранное. Разрешите сохранение данных сайта в браузере и попробуйте снова."; }
+  } catch {
+    cached = parseSavedPromos(JSON.stringify(next)); memoryOnly = true;
+    window.dispatchEvent(new Event(CHANGED_EVENT));
+    return "Браузер запретил постоянное хранение. Избранное доступно только до закрытия этой вкладки.";
+  }
 }

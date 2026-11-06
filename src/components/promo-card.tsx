@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { Copy, Check, ExternalLink, ChevronDown } from "lucide-react";
 import { SavePromoButton } from "./save-promo-button";
-import { currentCartCheck, effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
+import { effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
 
 export function formatPromoDate(time: number) {
   return new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Moscow" }).format(time);
@@ -19,7 +19,6 @@ export function PromoCard({ code }: { code: PromoCode }) {
     return () => clearTimeout(timer);
   }, [copied]);
   const status = effectiveStatus(code);
-  const cartCheck = currentCartCheck(code);
   const colors = {
     found: "bg-slate-100 text-slate-700", official: "bg-emerald-100 text-emerald-800", verified: "bg-green-100 text-green-800", rejected: "bg-orange-100 text-orange-800",
     expired: "bg-gray-100 text-gray-600", unavailable: "bg-amber-100 text-amber-800",
@@ -42,14 +41,9 @@ export function PromoCard({ code }: { code: PromoCode }) {
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
       </button>
     </div>
-    {cartCheck && <div className="mt-2 rounded-lg bg-muted/50 p-2 text-xs">
-      <p className="font-medium">Корзина: {statusLabels[cartCheck.status]}</p>
-
-    </div>}
     {copied && <p role="status" className="mt-2 text-xs text-blue-700">Код скопирован</p>}
     {copyError && <p role="alert" className="mt-2 text-xs text-red-600">Не удалось скопировать. Выделите код вручную.</p>}
     <div id={detailsId} hidden={!expanded}>
-    {cartCheck && <p className="mt-3 text-sm">{cartCheck.details} · {formatPromoDate(cartCheck.observedAt)} МСК</p>}
     <p className="mt-3 text-lg font-bold">{code.discount}</p>
     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
       {code.minOrder !== undefined && <p>Минимальный заказ: {code.minOrder} ₽</p>}

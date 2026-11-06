@@ -54,7 +54,7 @@ export type ScanState = {
   officialError?: string;
 };
 export const statusLabels: Record<PromoStatus, string> = {
-  found: "Не проверен", official: "На официальном сайте", verified: "Проверен в корзине", rejected: "Не подошёл при проверке",
+  found: "Найдено на сайтах", official: "На официальном сайте", verified: "Проверен в корзине", rejected: "Не подошёл при проверке",
   expired: "Срок истёк", unavailable: "Проверка недоступна",
 };
 export function makeLogEntry(text: string, type: ScanLogEntry["type"]): ScanLogEntry {

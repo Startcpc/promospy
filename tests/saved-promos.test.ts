@@ -17,3 +17,8 @@ test("saved lists and lookup queries are bounded and reject incomplete or invali
   assert.deepEqual(parseSavedIds("id1,54:1раз,id1"), ["id1", "54:1раз"]);
   for (const raw of [null, "", "id1,", ",id1", "a b", "<script>", "a".repeat(129), list.map(item => item.id).join(",")]) assert.equal(parseSavedIds(raw), null);
 });
+
+test("saved snapshot retains conditions but never carries official or verified claims", () => {
+ const item={id:"54:SAVE10",companyId:54,code:"SAVE10",savedAt:1000,snapshot:{id:"54:SAVE10",companyId:54,code:"SAVE10",description:"Первый заказ",discount:"10%",status:"verified",checked:999,conditions:["От 1000 рублей"],sources:[]}};
+ const [saved]=parseSavedPromos(JSON.stringify([item]));assert.equal(saved.snapshot?.status,"found");assert.equal(saved.snapshot?.checked,undefined);assert.deepEqual(saved.snapshot?.conditions,["От 1000 рублей"]);
+});

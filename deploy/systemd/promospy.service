@@ -1,5 +1,5 @@
 [Unit]
-Description=PromoSpy web server and background collector
+Description=PromoSpy web server
 After=network-online.target
 Wants=network-online.target
 
@@ -12,7 +12,6 @@ EnvironmentFile=/etc/promospy.env
 Environment=NODE_ENV=production
 Environment=HOSTNAME=127.0.0.1
 Environment=PORT=3000
-Environment=PROMO_WORKER_ENABLED=1
 ExecStart=/usr/bin/node scripts/start.mjs
 Restart=always
 RestartSec=5

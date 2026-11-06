@@ -1,6 +1,6 @@
 {
   "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -p 3000",
@@ -8,19 +8,12 @@
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./scripts/register-ts.mjs --test tests/promos.test.ts tests/queue.test.ts tests/lifecycle.test.ts tests/public-official.test.ts tests/promo-terms.test.ts tests/database-tools.test.mjs tests/saved-promos.test.ts tests/cart-pipeline.test.ts tests/cart-cases.test.ts tests/request-origin.test.ts tests/official-redirects.test.ts",
+    "test": "node --import ./scripts/register-ts.mjs --test tests/saved-promos.test.ts tests/request-origin.test.ts tests/web-search.test.ts tests/search-store.test.ts",
     "test:search": "node --import ./scripts/register-ts.mjs scripts/test-search.ts",
-    "test:smoke": "node tests/smoke.mjs",
-    "scan:once": "node --env-file=.env --import ./scripts/register-ts.mjs scripts/scan-once.ts",
-    "worker": "node --env-file=.env --import ./scripts/register-ts.mjs scripts/promo-worker.ts",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
+    "test:smoke": "node --import ./scripts/register-ts.mjs --test tests/web-ui.test.ts",
     "db:backup": "node --env-file=.env scripts/backup-db.mjs",
     "db:restore": "node --env-file=.env scripts/restore-db.mjs",
-    "test:ui": "node --import ./scripts/register-ts.mjs --test tests/ui-official.test.ts tests/saved-promos-ui.test.ts",
-    "test:cart": "node --import ./scripts/register-ts.mjs --test tests/cart-cases.test.ts tests/cart-pipeline.test.ts tests/cart-browser.test.ts"
+    "test:ui": "node --import ./scripts/register-ts.mjs --test tests/web-ui.test.ts"
   },
   "engines": {
     "node": ">=24"
@@ -31,7 +24,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.1.1",
     "@mdxeditor/editor": "^3.39.1",
-    "@prisma/client": "^6.11.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",
@@ -75,8 +67,6 @@
     "next-auth": "^4.24.11",
     "next-intl": "^4.3.4",
     "next-themes": "^0.4.6",
-    "playwright": "^1.64.1",
-    "prisma": "^6.11.1",
     "react": "^19.0.0",
     "react-day-picker": "^9.8.0",
     "react-dom": "^19.0.0",
@@ -91,7 +81,6 @@
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
     "vaul": "^1.1.2",
-    "z-ai-web-dev-sdk": "^0.0.18",
     "zod": "^4.0.2",
     "zustand": "^5.0.6"
   },
@@ -105,7 +94,8 @@
     "eslint-config-next": "^16.1.1",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "playwright": "^1.64.1"
   },
   "packageManager": "pnpm@11.25.0"
 }
