@@ -1,4 +1,4 @@
-// Node 24 native TypeScript runner: resolve project aliases and extensionless TS imports.
+// Node 22.18+ native TypeScript runner: resolve project aliases and extensionless TS imports.
 import { registerHooks } from "node:module";
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";

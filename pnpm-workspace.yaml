@@ -1,6 +1,5 @@
-# Explicit dependency build policy for pnpm 11 (Node.js 24+).
+# Native dependencies used by Next.js, Tailwind and its lint toolchain.
 allowBuilds:
   '@parcel/watcher': true
   '@swc/core': true
   sharp: true
-  es5-ext: false

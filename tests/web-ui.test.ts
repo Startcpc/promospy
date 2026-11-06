@@ -29,7 +29,8 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   assert.equal(await page.getByLabel('Поиск предложений',{exact:true}).count(),0);
   const merchant=page.getByRole('link',{name:'Промокоды ВкусВилл',exact:true});await merchant.hover();assert.equal(await merchant.evaluate(el=>getComputedStyle(el).transform),'none');await merchant.click();
   await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).waitFor();
-  assert.equal(await page.getByRole('button',{name:/Повтор через/}).isDisabled(),true);
+  assert.equal(await page.getByRole('button',{name:'Обновить',exact:true}).isEnabled(),true);
+  assert.equal(await page.getByText(/Повтор через/).count(),0);
   await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).click();
   await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
   await page.waitForURL(base+'/saved');
@@ -42,15 +43,21 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   await page.getByRole('button',{name:'Условия SAVE10',exact:true}).click();assert.match(await page.locator('article').innerText(),/Первый заказ/);
   await page.setViewportSize({width:320,height:740});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();await page.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
-  // Opening a merchant is GET-only; paid work / scans never start just by visiting.
+  // Opening a merchant starts one automatic search; manual refresh remains immediate.
   let posts=0;
-  await page.route('**/api/scan/201',route=>{
+  await page.route('**/api/scan/201*',route=>{
    if(route.request().method()==='POST')posts++;
    return route.fulfill({json:{codes:[],status:'idle',lastScan:null,nextScan:null,error:null,log:[]}});
   });
-  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,0);
-  await page.getByRole('button',{name:'Найти промокоды',exact:true}).click();assert.equal(posts,1);
+  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,1);
+  assert.equal(await page.getByText(/Нажмите.*Найти промокоды/).count(),0);
+  await page.getByRole('button',{name:'Обновить',exact:true}).click();assert.equal(posts,2);
   assert.deepEqual(errors,[]);
+  // Bundled logos paint with JavaScript disabled, without letter placeholders.
+  const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();
+  await nativePage.goto(base,{waitUntil:'networkidle'});
+  const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),12);
+  assert.ok(await logos.evaluateAll(images=>images.every(img=>(img as HTMLImageElement).naturalWidth>0&&getComputedStyle(img).opacity==='1')));await native.close();
   const blocked=await browser.newContext();await blocked.addInitScript(()=>{Storage.prototype.setItem=()=>{throw Error('storage disabled');};});
   const blockedPage=await blocked.newPage();await blockedPage.goto(base+'/company/54',{waitUntil:'networkidle'});
   await blockedPage.getByRole('button',{name:'Сохранить SAVE10',exact:true}).click();

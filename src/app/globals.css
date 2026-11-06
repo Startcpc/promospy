@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -329,3 +328,8 @@ html { scroll-behavior: smooth; }
 .retro-button:hover:not(:disabled), .retro-filter:hover, .retro-button:active:not(:disabled), .retro-filter:active, .merchant-card:hover { transform: none; }
 .merchant-card:hover img { transform: scale(1.06); transition: transform .18s; }
 @media (prefers-reduced-motion: reduce) { .merchant-card:hover img { transform: none; } }
+
+/* Tap feedback is immediate; decorative motion never postpones actions. */
+a, button, input, select, summary, label { touch-action: manipulation; }
+.retro-button, .retro-filter, .merchant-card { transition: background-color .08s, border-color .08s; }
+.retro-button:active:not(:disabled), .retro-filter:active, .merchant-card:active { background-color: #fff0de; }

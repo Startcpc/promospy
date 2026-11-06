@@ -60,3 +60,5 @@ server.log
 /db/*.backup-*
 
 /db/backups/
+/.runtime/
+__pycache__/
