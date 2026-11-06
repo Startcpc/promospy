@@ -1,3 +1,5 @@
+// Source lifecycle tests isolate browser checks; test:cart covers the separate cart stage.
+process.env.PROMO_CART_CHECKS_ENABLED = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";

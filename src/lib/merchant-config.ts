@@ -1,5 +1,7 @@
 // Store-specific browser selectors. A selector mismatch means unavailable, never expired.
 export type CartConfig = {
+  /** Explicitly unavailable until the public cart has been inspected. */
+  unavailableReason?: string;
   /** URL каталога для поиска товара */
   catalogUrl: string;
   /** Селектор кнопки "В корзину" */
@@ -25,6 +27,11 @@ export type CartConfig = {
 };
 
 export const CART_CONFIGS: Record<number, CartConfig> = {
+  302: {
+    catalogUrl: "https://www.kartoshka.com/", unavailableReason: "Корзина Крошки Картошки ещё не подключена: требуется проверка официального сценария доставки выбранного кафе.",
+    addToCartSelector: "", cartLinkSelector: "", promoInputSelector: "", applyButtonSelector: "",
+    totalBeforeSelector: "", totalAfterSelector: "", errorSelector: "", defaultMinOrder: 0, maxItemsToAdd: 0,
+  },
   // === Tanuki — суши-доставка ===
   301: {
     catalogUrl: "https://tanukifamily.ru/tanuki/msk/",

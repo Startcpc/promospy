@@ -68,6 +68,11 @@ function CompanyResults({ id }: { id: number }) {
       <img src={company.logo} alt="" className="h-20 w-20 rounded-2xl object-contain p-2" style={{ backgroundColor: `#${company.bgColor}` }} />
       <div><h1 className="text-3xl font-bold">Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-sm underline">Сайт магазина</a></div>
     </header>
+    {id === 302 && <aside className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <p>У «Крошки Картошки» есть купоны для кассы и киоска самообслуживания. Они не применяются при заказах через агрегаторы доставки; участие зависит от кафе.</p>
+      <a href="https://www.kartoshka.com/actions/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-medium underline">Открыть официальные купоны и условия</a>
+      <p className="mt-2">Автоматическая проверка онлайн-корзины этого магазина пока недоступна.</p>
+    </aside>}
     <p className="mb-4 text-sm text-muted-foreground">{id === 301 ? "Регион проверки: Москва. " : ""}Актуальные предложения выше. Истёкшие и отклонённые скрываются через 24 часа.</p>
     <section className="mb-6 rounded-2xl border p-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-3">

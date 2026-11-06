@@ -13,9 +13,9 @@ export type CartObservation = {
 /** Only a scoped response to THIS submission may confirm or reject a code. */
 export function classifyCartObservation(observation: CartObservation): VerificationResult {
   const { message, appliedCode, totalBefore, totalAfter, minOrder, code } = observation;
-  if (totalBefore === undefined || totalBefore < minOrder) return { status: "unavailable", details: "Не подтверждена минимальная сумма заказа" };
+  if (totalBefore === undefined || !Number.isFinite(totalBefore) || totalBefore <= 0 || totalBefore < minOrder) return { status: "unavailable", details: "Не подтверждена минимальная сумма заказа" };
   if (!message.trim()) return { status: "unavailable", details: "Сайт не предоставил результат применения промокода" };
-  if (/войдите|авторизац|телефон|адрес|капч|captcha|перв\w* заказ|нов\w* клиент|минимальн|от\s+\d|категори|товар|регион|город/i.test(message)) {
+  if (/войдите|авторизац|телефон|адрес|капч|captcha|перв[а-яё]* заказ|нов[а-яё]* клиент|минимальн|от\s+\d|категори|товар|регион|город/i.test(message)) {
     return { status: "unavailable", details: `Нужно уточнить условия: ${message.slice(0, 400)}` };
   }
   if (/ист[её]к|срок действия.*заверш|expired/i.test(message)) return { status: "expired", details: message.slice(0, 400) };
@@ -23,7 +23,7 @@ export function classifyCartObservation(observation: CartObservation): Verificat
     return { status: "rejected", details: message.slice(0, 400) };
   }
   const accepted = /(?:промокод|купон|код|скидка).*(?:примен[её]н|активирован)|(?:applied|activated)/i.test(message);
-  if (appliedCode === code && accepted && totalAfter !== undefined && totalAfter < totalBefore) {
+  if (appliedCode === code && accepted && totalAfter !== undefined && Number.isFinite(totalAfter) && totalAfter >= 0 && totalAfter < totalBefore) {
     return { status: "verified", details: `Подтверждено в тестовой корзине: ${totalBefore} ₽ → ${totalAfter} ₽` };
   }
   return { status: "unavailable", details: "Нет однозначного подтверждения скидки именно по этому коду" };
@@ -35,23 +35,26 @@ async function uniqueVisible(page: Page, selector: string): Promise<Locator | un
 }
 async function amount(page: Page, selector: string) {
   const el = await uniqueVisible(page, selector);
-  return el ? parseMoney(await el.innerText()) : undefined;
+  return el ? parseCartTotal(await el.innerText()) : undefined;
 }
 
 export async function verifyPromoWithBrowser(code: PromoCode, company: Company, signal?: AbortSignal): Promise<VerificationResult> {
   const config = CART_CONFIGS[company.id];
   if (!config) return { status: "unavailable", details: "Для магазина пока нет сценария проверки" };
+  if (config.unavailableReason) return { status: "unavailable", details: config.unavailableReason };
   if (code.expiresAt && code.expiresAt <= Date.now()) return { status: "expired", details: "Срок действия указан в источнике" };
   if (code.startsAt && code.startsAt > Date.now()) return { status: "unavailable", details: "Акция ещё не началась" };
   if (company.id === 301) return { status: "unavailable", details: "Для проверки стороннего кода Тануки требует вход по СМС. Официальные коды отслеживаются по публичным акциям Москвы." };
   let browser: Browser | undefined;
   const cancel = () => { void browser?.close().catch(() => {}); };
+  const boundedSignal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(45000)]);
+  signal = boundedSignal;
   const timer = setTimeout(cancel, 45000);
   signal?.addEventListener("abort", cancel, { once: true });
   try {
     signal?.throwIfAborted();
     const { chromium } = await import("playwright");
-    browser = await chromium.launch({ headless: true, timeout: 15000 });
+    browser = await chromium.launch({ headless: true, timeout: 15000, ...(process.env.PROMO_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PROMO_CHROMIUM_EXECUTABLE } : {}) });
     signal?.throwIfAborted();
     const context = await browser.newContext({ locale: "ru-RU", viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();
@@ -86,14 +89,14 @@ export async function verifyPromoWithBrowser(code: PromoCode, company: Company, 
     await input.waitFor({ state: "visible" });
     if (await input.count() !== 1) return { status: "unavailable", details: "Поле промокода не определено однозначно" };
     const totalBefore = await amount(page, config.totalBeforeSelector);
-    if (totalBefore === undefined || totalBefore < minOrder) return { status: "unavailable", details: "Корзина не достигла минимальной суммы или сумма не определена" };
+    if (totalBefore === undefined || !Number.isFinite(totalBefore) || totalBefore <= 0 || totalBefore < minOrder) return { status: "unavailable", details: "Корзина не достигла минимальной суммы или сумма не определена" };
     // Limit observations to the promo widget. Never interpret unrelated body text or generic errors.
     const widget = input.locator('xpath=ancestor::*[@data-testid="promocode" or @data-testid="promo-code" or contains(@class,"promocode") or contains(@class,"promo-code") or contains(@class,"coupon")][1]');
     if (await widget.count() !== 1) return { status: "unavailable", details: "Не удалось выделить блок применения промокода" };
     const result = widget.locator('[role="alert"], [role="status"], [data-testid="promo-message"], [class*="message"], [class*="error"], [class*="success"]').filter({ visible: true });
     const previous = (await result.allTextContents()).join(" ").trim();
     await input.fill(code.code);
-    const apply = widget.getByRole("button", { name: /^(Применить|Активировать)$/i });
+    const apply = widget.locator(config.applyButtonSelector).filter({ visible: true });
     if (await apply.count() !== 1) return { status: "unavailable", details: "Кнопка применения промокода не определена" };
     await apply.click();
     // Wait for an actual changed response from the widget after submission.
@@ -106,11 +109,20 @@ export async function verifyPromoWithBrowser(code: PromoCode, company: Company, 
       await new Promise((resolve) => setTimeout(resolve, 200));
     } while (Date.now() < deadline);
     if (message === previous) return { status: "unavailable", details: "После отправки кода не получен новый ответ" };
-    const totalAfter = await amount(page, config.totalAfterSelector);
+    let totalAfter = await amount(page, config.totalAfterSelector);
     const applied = widget.locator('[data-applied-code], [data-testid="applied-promo-code"]');
     const appliedCode = await applied.count() === 1
       ? (await applied.getAttribute("data-applied-code") ?? await applied.innerText()).trim()
-      : message.includes(code.code) ? code.code : undefined;
+      : messageContainsCode(message, code.code) ? code.code : undefined;
+    // The result message can arrive before the asynchronously recalculated total.
+    if (appliedCode === code.code && /примен[её]н|активирован|applied|activated/i.test(message)) {
+      const settleUntil = Date.now() + 2000;
+      while ((totalAfter === undefined || totalAfter === totalBefore) && Date.now() < settleUntil) {
+        signal?.throwIfAborted();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        totalAfter = await amount(page, config.totalAfterSelector);
+      }
+    }
     const classified = classifyCartObservation({ code: code.code, message, appliedCode, totalBefore, totalAfter, minOrder });
     return {
       ...classified,
@@ -130,4 +142,14 @@ export async function verifyPromoWithBrowser(code: PromoCode, company: Company, 
     signal?.removeEventListener("abort", cancel);
     await browser?.close().catch(() => {});
   }
+}
+
+export function messageContainsCode(message: string, code: string) {
+  return message.split(/[^\p{L}\p{N}_-]+/u).includes(code);
+}
+export function parseCartTotal(text: string): number | undefined {
+  const amounts = [...text.matchAll(/\d[\d \u00a0\u202f]*(?:[.,]\d{1,2})?\s*(?:₽|руб(?:лей|ля|ль)?\.?)/gi)];
+  if (amounts.length > 1) return undefined;
+  if (amounts.length === 1) return parseMoney(amounts[0][0]);
+  return /^\s*\d[\d \u00a0\u202f]*(?:[.,]\d{1,2})?\s*$/.test(text) ? parseMoney(text) : undefined;
 }

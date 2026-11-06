@@ -3,7 +3,12 @@ import { companies } from "./companies";
 export const PROMO_STATUSES = ["found", "official", "verified", "rejected", "expired", "unavailable"] as const;
 export type PromoStatus = (typeof PROMO_STATUSES)[number];
 export type PromoSource = { url: string; name: string; seenAt: number };
+export type CartCheck = {
+  status: PromoStatus; details: string; observedAt: number; validUntil?: number;
+  totalBefore?: number; totalAfter?: number;
+};
 export type VerificationEvidence = {
+  cartCheck?: CartCheck;
   method: "browser" | "source";
   observedAt: number;
   message: string;
@@ -87,4 +92,13 @@ export function visiblePromoCodes(codes: PromoCode[], now = Date.now()): PromoCo
 
 export function isActivePromo(code: PromoCode, now = Date.now()) {
   return (code.startsAt === undefined || code.startsAt <= now) && ["verified", "official"].includes(effectiveStatus(code, now));
+}
+
+export function currentCartCheck(code: PromoCode, now = Date.now()): CartCheck | undefined {
+  const check = code.evidence?.cartCheck;
+  if (!check) return undefined;
+  if (check.status === "verified" && (!check.validUntil || check.validUntil <= now || (code.expiresAt !== undefined && code.expiresAt <= now))) {
+    return { ...check, status: "unavailable", details: "Подтверждение корзины устарело; нужна новая проверка." };
+  }
+  return check;
 }

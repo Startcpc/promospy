@@ -8,7 +8,7 @@ export { parsePromoCodesFromHtml } from "./promo-parser";
 export { verifyPromoWithBrowser } from "./promo-verification";
 
 export const COMPANY_SLUGS: Record<number, string> = {
-  5: "burger-king", 54: "vkusvill", 102: "vkusno-i-tochka", 201: "magnit", 202: "pyaterochka",
+  302: "kroshka-kartoshka", 5: "burger-king", 54: "vkusvill", 102: "vkusno-i-tochka", 201: "magnit", 202: "pyaterochka",
   203: "yandex-lavka", 204: "yandex-market", 205: "perekrestok", 206: "lenta", 207: "wildberries", 208: "ozon", 301: "tanuki",
 };
 const AGGREGATORS = [
@@ -45,7 +45,7 @@ async function boundedDiscovery(operation: () => Promise<unknown>, signal?: Abor
 export async function findPromoSources(company: Company, signal?: AbortSignal): Promise<string[]> {
   const slug = COMPANY_SLUGS[company.id];
   // Official site first. Search discoveries are additive; do not discard all but the first one.
-  const sources = [company.website, ...AGGREGATORS.map((item) => item.url(slug))];
+  const sources = [company.id === 302 ? "https://www.kartoshka.com/actions/" : company.website, ...AGGREGATORS.map((item) => item.url(slug))];
   if (process.env.PROMO_WEB_SEARCH_ENABLED === "1") {
     try {
       const result = await boundedDiscovery(async () => {
@@ -106,6 +106,9 @@ export async function runFullScan(
     const official = await collectPublicOfficial(company.id, signal);
     signal.throwIfAborted();
     onProgress(makeLogEntry(official.error ?? `Официальный сайт: найдено ${official.codes.length} кодов`, official.error ? "error" : "found"));
+    if (official.complete && process.env.PROMO_CART_CHECKS_ENABLED !== "0") {
+      await checkOfficialCarts(official.codes, company, signal, onProgress, previous);
+    }
     return { codes: official.codes, sourcesSucceeded: official.complete ? 1 : 0, sourcesTotal: 1, official };
   }
   const sources = await findPromoSources(company, signal);
@@ -157,4 +160,27 @@ export async function runFullScan(
     onProgress(makeLogEntry(`${code.code}: ${result.details}`, "result"));
   }
   return { codes, sourcesSucceeded, sourcesTotal: sources.length, official };
+}
+
+/** Basket evidence is separate from official publication; failures never revoke publication. */
+export async function checkOfficialCarts(
+  codes: PromoCode[], company: Company, signal: AbortSignal,
+  progress: (entry: ScanLogEntry) => void, previous: PromoCode[] = [],
+  verify: typeof verifyPromoWithBrowser = verifyPromoWithBrowser,
+) {
+  const last = new Map(previous.map(code => [code.code, code.evidence?.cartCheck?.observedAt ?? 0]));
+  const candidates = codes.filter(code => code.status !== "expired" && (!code.startsAt || code.startsAt <= Date.now()))
+    .sort((a,b) => (last.get(a.code) ?? 0) - (last.get(b.code) ?? 0)).slice(0,3);
+  for (const code of candidates) {
+    signal.throwIfAborted();
+    if (!code.evidence) continue;
+    progress(makeLogEntry(`Проверяю официальный код ${code.code} в отдельной корзине`, "verify"));
+    const result = await verify(code, company, signal);
+    signal.throwIfAborted();
+    const observedAt = Date.now();
+    code.evidence.cartCheck = { status: result.status, details: result.details, observedAt,
+      validUntil: result.status === "verified" ? Math.min(observedAt + 6 * 3600000, code.expiresAt ?? Infinity) : undefined,
+      totalBefore: result.evidence?.totalBefore, totalAfter: result.evidence?.totalAfter };
+    progress(makeLogEntry(`${code.code}: ${result.details}`, "result"));
+  }
 }

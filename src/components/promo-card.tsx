@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { Copy, Check, ExternalLink, ChevronDown } from "lucide-react";
 import { SavePromoButton } from "./save-promo-button";
-import { effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
+import { currentCartCheck, effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
 
 export function formatPromoDate(time: number) {
   return new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Moscow" }).format(time);
@@ -14,6 +14,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const status = effectiveStatus(code);
+  const cartCheck = currentCartCheck(code);
   const colors = {
     found: "bg-slate-100 text-slate-700", official: "bg-emerald-100 text-emerald-800", verified: "bg-green-100 text-green-800", rejected: "bg-orange-100 text-orange-800",
     expired: "bg-gray-100 text-gray-600", unavailable: "bg-amber-100 text-amber-800",
@@ -22,7 +23,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
     try { await navigator.clipboard.writeText(code.code); setCopied(true); setCopyError(false); }
     catch { setCopyError(true); }
   };
-  return <article className="self-start rounded-xl border border-border bg-card p-3">
+  return <article className="self-start rounded-2xl border border-[#dce3d6] bg-white p-4 text-[#243d30] shadow-[0_3px_15px_-10px_rgba(30,65,40,0.12)]">
     <div className="flex items-start gap-2">
     <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="block min-w-0 flex-1 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Условия ${code.code}`}>
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors[status]}`}>{status === "found" && code.evidence?.method === "source" ? "Актуальность не подтверждена" : statusLabels[status]}</span>
@@ -31,11 +32,16 @@ export function PromoCard({ code }: { code: PromoCode }) {
     <SavePromoButton offer={code} />
     </div>
     <div className="mt-3 flex items-center gap-2">
-      <code className="min-w-0 flex-1 break-all rounded-lg border border-dashed bg-muted/50 px-3 py-2 font-bold">{code.code}</code>
-      <button onClick={copy} disabled={status === "expired"} aria-label={`Скопировать ${code.code}`} className="rounded-lg bg-foreground p-3 text-background disabled:opacity-40">
+      <code className="min-w-0 flex-1 break-all rounded-xl border border-dashed border-[#b9cbb0] bg-[#f1f5ec] px-3 py-2 font-bold">{code.code}</code>
+      <button onClick={copy} disabled={status === "expired"} aria-label={`Скопировать ${code.code}`} className="rounded-lg bg-[#214d3c] p-3 text-white disabled:opacity-40">
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
       </button>
     </div>
+    {cartCheck && <div className="mt-2 rounded-lg bg-muted/50 p-2 text-xs">
+      <p className="font-medium">Корзина: {statusLabels[cartCheck.status]}</p>
+      <p>{cartCheck.details}</p>
+      <p className="mt-1 text-muted-foreground">{formatPromoDate(cartCheck.observedAt)} МСК</p>
+    </div>}
     {copyError && <p role="alert" className="mt-2 text-xs text-red-600">Не удалось скопировать. Выделите код вручную.</p>}
     <div id={detailsId} hidden={!expanded}>
     <p className="mt-3 text-lg font-bold">{code.discount}</p>

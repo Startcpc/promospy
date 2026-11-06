@@ -292,3 +292,10 @@
     opacity: 1;
   }
 }
+
+/* Navigation anchors and keyboard navigation remain usable without animations. */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
