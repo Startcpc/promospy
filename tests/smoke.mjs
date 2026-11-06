@@ -44,6 +44,7 @@ try {
   assert.equal(await client.promoScanJob.count(), 1);
   assert.equal((await fetch("http://127.0.0.1:3123/api/scan/nope")).status, 404);
   assert.equal((await fetch("http://127.0.0.1:3123/api/scan/208", { method: "POST", headers: { Origin: "https://unrelated.example" } })).status, 403);
+  assert.equal((await fetch("http://127.0.0.1:3123/api/scan/208", { method: "POST", headers: { Origin: "https://example-preview.app.github.dev", Host: "example-preview.app.github.dev" } })).status, 202);
   const search = await (await fetch("http://127.0.0.1:3123/api/promocodes?q=" + encodeURIComponent("ДОСТАВКА"))).json();
   assert.ok(search.codes.some((code) => code.code === "TEST-VERIFIED"));
   assert.ok(!search.codes.some((code) => code.code === "MOSCOW-HIDDEN"));

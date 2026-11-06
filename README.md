@@ -2,7 +2,7 @@
 
 Задание для следующего агента: [NEXT_AGENT_TASK.md](NEXT_AGENT_TASK.md).
 
-Быстрый старт: [START_HERE.md](START_HERE.md). Изменения 0.5.1 и фактические проверки: [отчёт](docs/release-0.5.1.md). Постоянный сервер и резервные копии: [инструкция](docs/server-setup.md).
+Быстрый старт: [START_HERE.md](START_HERE.md). Изменения 0.6.0 и фактические проверки: [отчёт](docs/release-0.6.0.md). Постоянный сервер и резервные копии: [инструкция](docs/server-setup.md).
 
 Каталог магазинов и промокодов на Next.js, React, Prisma и SQLite.
 

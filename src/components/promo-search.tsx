@@ -40,8 +40,7 @@ export function PromoSearch() {
   }, [query, verified, page, key]);
   const codes = visiblePromoCodes(current?.codes ?? [], now).filter(code => !verified || isActivePromo(code, now));
   return <section className="mt-12" aria-busy={loading}>
-    <p className="mb-2 text-[10px] font-bold tracking-[0.2em] text-[#c2410c]">НАЙДИТЕ ПРЕДЛОЖЕНИЕ ПОД СВОИ ПЛАНЫ</p>
-    <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Поиск промокодов и предложений</h2>
+    <h2 className="text-2xl font-black tracking-tight sm:text-3xl">Поиск промокодов и предложений</h2>
     <div className="my-4 flex flex-wrap items-center gap-3">
       <input aria-label="Поиск предложений" placeholder="Например: доставка, первый заказ, Ozon" value={query} onChange={event => { setQuery(event.target.value); setPage(0); }} className="min-w-48 flex-1 rounded-xl border border-[#dce7f9] bg-white px-4 py-3" />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={verified} onChange={event => { setVerified(event.target.checked); setPage(0); }} />Только актуальные</label>

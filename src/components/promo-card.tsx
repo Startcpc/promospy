@@ -28,7 +28,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
     try { setCopied(false); await navigator.clipboard.writeText(code.code); setCopied(true); setCopyError(false); }
     catch { setCopyError(true); }
   };
-  return <article className="self-start rounded-2xl border border-[#dce7f9] bg-white p-4 text-[#11254b] shadow-[0_3px_15px_-10px_rgba(29,78,216,0.12)]">
+  return <article className="promo-card self-start rounded-lg border-2 border-[#16213e] bg-white p-4 text-[#11254b] shadow-[0_3px_15px_-10px_rgba(29,78,216,0.12)]">
     <div className="flex items-start gap-2">
     <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={detailsId} className="block min-w-0 flex-1 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4" aria-label={`Условия ${code.code}`}>
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors[status]}`}>{status === "found" && code.evidence?.method === "source" ? "Актуальность не подтверждена" : statusLabels[status]}</span>
@@ -44,12 +44,12 @@ export function PromoCard({ code }: { code: PromoCode }) {
     </div>
     {cartCheck && <div className="mt-2 rounded-lg bg-muted/50 p-2 text-xs">
       <p className="font-medium">Корзина: {statusLabels[cartCheck.status]}</p>
-      <p>{cartCheck.details}</p>
-      <p className="mt-1 text-muted-foreground">{formatPromoDate(cartCheck.observedAt)} МСК</p>
+
     </div>}
     {copied && <p role="status" className="mt-2 text-xs text-blue-700">Код скопирован</p>}
     {copyError && <p role="alert" className="mt-2 text-xs text-red-600">Не удалось скопировать. Выделите код вручную.</p>}
     <div id={detailsId} hidden={!expanded}>
+    {cartCheck && <p className="mt-3 text-sm">{cartCheck.details} · {formatPromoDate(cartCheck.observedAt)} МСК</p>}
     <p className="mt-3 text-lg font-bold">{code.discount}</p>
     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
       {code.minOrder !== undefined && <p>Минимальный заказ: {code.minOrder} ₽</p>}

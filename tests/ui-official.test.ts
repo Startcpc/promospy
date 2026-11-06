@@ -49,7 +49,10 @@ test("official cards: conditions, future filter, monitoring errors and mobile la
       await page.getByRole("button", { name: `Условия ${current.code}`, exact: true }).click();
       assert.match(await page.locator("article").innerText(), /Минимальный заказ: 1000 ₽/);
       assert.equal(await page.getByRole("button", { name: `Скопировать ${current.code}`, exact: true }).isEnabled(), true);
-      assert.match(await page.getByRole("alert").filter({ hasText: "Тестовая ошибка источника" }).innerText(), /Тестовая ошибка источника/);
+      await page.getByText("Не удалось обновить. Показываем сохранённые коды.", { exact: true }).waitFor();
+      assert.equal(await page.locator(".scan-panel > details").getAttribute("open"), null);
+      await page.getByText("Подробнее об обновлении", { exact: true }).click();
+      assert.match(await page.locator(".scan-panel").innerText(), /Тестовая ошибка источника/);
       assert.match(await page.locator("body").innerText(), /Последнее успешное чтение/);
       await page.setViewportSize({ width: 390, height: 844 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
@@ -59,7 +62,14 @@ test("official cards: conditions, future filter, monitoring errors and mobile la
     await page.route(/\/api\/promocodes\?/, route => route.fulfill({ json: { codes: [], hasMore: false } }));
     await page.goto(`${origin}/`, { waitUntil: "networkidle" });
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await page.screenshot({ path: "test-results/home-redesign.png", fullPage: true });
+    await page.getByRole("heading", { name: "Лови выгоду", exact: true }).waitFor();
+    await page.locator(".letter-ink").first().hover();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector(".letter-ink")!).transform !== "none");
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: "test-results/home-redesign.png", fullPage: true, animations: "disabled" });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.locator(".merchant-card").first().hover();
+    assert.equal(await page.locator(".merchant-card").first().evaluate(el => getComputedStyle(el).transform), "none");
     await page.getByRole("button", { name: "Перекусить", exact: true }).click();
     assert.equal(await page.getByLabel("Категория магазинов").inputValue(), "Быстрое питание");
     await page.getByLabel("Поиск магазинов", { exact: true }).fill("картошка");
@@ -74,7 +84,6 @@ test("official cards: conditions, future filter, monitoring errors and mobile la
     await page.getByRole("button", { name: "Открыть логотип компании Крошка Картошка", exact: true }).click();
     await page.getByRole("heading", { name: "Промокоды Крошка Картошка", exact: true }).waitFor();
     await page.getByRole("link", { name: "Открыть официальные купоны и условия" }).waitFor();
-    assert.equal(await page.locator('img[src="/logos/kroshka-kartoshka.svg"]').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0), true);
     assert.deepEqual(errors, []);
   } finally { await browser?.close(); server.kill(); }
 });

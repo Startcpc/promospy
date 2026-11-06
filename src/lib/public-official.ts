@@ -75,15 +75,30 @@ export function parsePublicOfficial(companyId: number, html: string, now = Date.
   return mergePromoCodes(codes);
 }
 
-/** Anonymous public HTML only; redirects are rejected rather than following an unknown destination. */
+/** Anonymous HTML; only bounded redirects on this official host are allowed. */
 export async function collectPublicOfficial(companyId: number, signal: AbortSignal): Promise<OfficialSnapshot> {
   const snapshot: OfficialSnapshot = { codes: [], complete: false, observedAt: Date.now() };
   const url = PUBLIC_OFFICIAL_URLS[companyId];
   try {
     if (!url) throw new Error("Нет официального источника");
     const bounded = AbortSignal.any([signal, AbortSignal.timeout(15000)]);
-    const response = await fetch(url, { signal: bounded, redirect: "manual", headers: {
-      "User-Agent": "PromoSpy/0.3 (+coupon indexing)", "Accept-Language": "ru-RU", Accept: "text/html" } });
+    let target = url;
+    let response: Response | undefined;
+    for (let hop = 0; hop < 4; hop++) {
+      response = await fetch(target, { signal: bounded, redirect: "manual", headers: {
+        "User-Agent": "PromoSpy/0.6 (+coupon indexing)", "Accept-Language": "ru-RU", Accept: "text/html" } });
+      if (![301,302,303,307,308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      if (!location) throw new Error("Официальный сайт перенаправил без адреса");
+      const next = new URL(location, target);
+      const officialHost = new URL(url).hostname.replace(/^www\./, "");
+      if (next.protocol !== "https:" || next.username || next.password || next.port
+        || next.hostname.replace(/^www\./, "") !== officialHost) throw new Error("Перенаправление за пределы официального источника");
+      if (hop === 3) throw new Error("Слишком много перенаправлений официального сайта");
+      target = next.href;
+    }
+    if (!response) throw new Error("Нет ответа официального сайта");
     if (!response.ok) { await response.body?.cancel(); throw new Error(`Официальный сайт: HTTP ${response.status}`); }
     if (!response.headers.get("content-type")?.includes("text/html")) { await response.body?.cancel(); throw new Error("Официальный источник вернул не HTML"); }
     const reader = response.body?.getReader();

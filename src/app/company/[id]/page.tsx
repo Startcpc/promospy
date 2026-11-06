@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { getCompanyById, matchesPromoQuery, isActivePromo, visiblePromoCodes, type ScanState } from "@/lib/promocodes";
+import { BrandLogo } from "@/components/brand-logo";
 import { SavedPromosLink } from "@/components/saved-promos-link";
 import { PromoCard, formatPromoDate } from "@/components/promo-card";
 
@@ -65,27 +66,32 @@ function CompanyResults({ id }: { id: number }) {
     <SavedPromosLink />
     </nav>
     <header className="mb-6 flex items-center gap-4">
-      <img src={company.logo} alt="" className="h-20 w-20 rounded-2xl object-contain p-2" style={{ backgroundColor: `#${company.bgColor}` }} />
+      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg p-2" style={{ backgroundColor: `#${company.bgColor}` }}><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
       <div><h1 className="text-3xl font-bold">Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-sm underline">Сайт магазина</a></div>
     </header>
     {id === 302 && <aside className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      <p>У «Крошки Картошки» есть купоны для кассы и киоска самообслуживания. Они не применяются при заказах через агрегаторы доставки; участие зависит от кафе.</p>
+      <p>Купоны для кассы и киоска. Участие зависит от кафе; для агрегаторов доставки не действуют.</p>
       <a href="https://www.kartoshka.com/actions/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-medium underline">Открыть официальные купоны и условия</a>
-      <p className="mt-2">Автоматическая проверка онлайн-корзины этого магазина пока недоступна.</p>
     </aside>}
-    <p className="mb-4 text-sm text-muted-foreground">{id === 301 ? "Регион проверки: Москва. " : ""}Актуальные предложения выше. Истёкшие и отклонённые скрываются через 24 часа.</p>
-    <section className="mb-6 rounded-2xl border p-4" aria-live="polite">
+    <section className="scan-panel mb-6 border-2 border-[#16213e] bg-white p-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><p className="font-semibold">{state?.status === "running" ? "Проверяем источники и условия" : state?.status === "queued" ? "Обновление в очереди" : "Сохранённые промокоды"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{state?.lastScan ? `Последнее завершённое обновление: ${formatPromoDate(state.lastScan)} МСК` : "Первое обновление ещё не завершено"}</p>
-          {state?.nextScan && !busy && <p className="mt-1 text-xs text-muted-foreground">Следующее обновление: {formatPromoDate(state.nextScan)} МСК</p>}
-        </div>
-        <button onClick={refresh} disabled={busy || refreshing || inCooldown} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />Обновить</button>
+        <p className="text-lg font-bold">{state?.status === "running" ? "Обновляем…" : state?.status === "queued" ? "В очереди" : "Промокоды"}</p>
+        <button onClick={refresh} disabled={busy || refreshing || inCooldown} className="retro-button inline-flex items-center gap-2 border-2 border-[#16213e] bg-[#ff6b24] px-4 py-2 font-bold text-[#16213e] disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />Обновить</button>
       </div>
-      {(error || state?.error) && <p role="alert" className="mt-3 text-sm text-amber-700">{error || state?.error}</p>}
-      {state?.officialError && <p role="alert" className="mt-2 text-sm text-amber-700">Ошибка официального источника: {state.officialError}</p>}
-      {state?.officialCheckedAt && <p className="mt-2 text-xs text-muted-foreground">Последнее успешное чтение официальных акций: {formatPromoDate(state.officialCheckedAt)} МСК. {state.officialError ? "Не удалось обновить источник. Сохраняем последний подтверждённый статус; дата успешной проверки указана в карточке." : "Публичные акции проверены без входа в аккаунт."}</p>}
-      {state && state.log.length > 0 && <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Ход обновления</summary><div className="mt-2 max-h-40 space-y-1 overflow-auto">{state.log.map((entry, index) => <p key={`${entry.time}-${index}`}>{entry.text}</p>)}</div></details>}
+      {error && <p role="alert" className="mt-3 text-base text-orange-900">{error}</p>}
+      {(state?.officialError || state?.error) && <p role="status" className="mt-3 text-base text-orange-900">Не удалось обновить. Показываем сохранённые коды.</p>}
+      {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
+        <div className="mt-3 space-y-2">
+          {state.lastScan && <p>Последняя попытка: {formatPromoDate(state.lastScan)} МСК</p>}
+          {state.nextScan && <p>Следующая: {formatPromoDate(state.nextScan)} МСК</p>}
+          {state.officialCheckedAt && <p>Последнее успешное чтение: {formatPromoDate(state.officialCheckedAt)} МСК</p>}
+          {state.officialError && <p>Ошибка источника: {state.officialError}</p>}
+          {state.error && <p>{state.error}</p>}
+          {id === 301 && <p>Регион проверки: Москва.</p>}
+          <p>Истёкшие и отклонённые коды скрываются через 24 часа.</p>
+          {state.log.length > 0 && <details><summary className="cursor-pointer">Журнал</summary><div className="mt-2 max-h-40 space-y-1 overflow-auto">{state.log.map((entry,index) => <p key={`${entry.time}-${index}`}>{entry.text}</p>)}</div></details>}
+        </div>
+      </details>}
     </section>
     <div className="mb-4 flex flex-wrap items-center gap-3">
       <input aria-label="Поиск по промокодам и условиям" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Код, скидка или условия акции" className="min-w-48 flex-1 rounded-lg border bg-background px-3 py-2 text-sm" />
@@ -94,6 +100,6 @@ function CompanyResults({ id }: { id: number }) {
     {!state && !error ? <p className="py-10 text-center text-muted-foreground">Загружаем результаты…</p>
       : codes.length ? <div className="grid gap-4 sm:grid-cols-2">{codes.map((code) => <PromoCard key={code.id} code={code} />)}</div>
         : <p className="py-10 text-center text-muted-foreground">{query || onlyVerified ? "Нет промокодов по выбранным условиям." : busy ? "Промокоды появятся после обработки источников." : "Промокоды пока не найдены. Новые предложения появятся после следующего обновления."}</p>}
-    <section className="mt-8 rounded-2xl border p-4"><h2 className="mb-2 font-semibold">О компании</h2><p className="text-sm text-muted-foreground">{company.description}</p></section>
+    <details className="mt-8 border-t pt-4"><summary className="cursor-pointer text-base font-bold">О компании</summary><p className="mt-3 text-base text-muted-foreground">{company.description}</p></details>
   </main>;
 }

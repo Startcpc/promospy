@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyById } from "@/lib/promocodes";
+import { allowedRequestOrigin, configuredPublicOrigin } from "@/lib/request-origin";
 import { getScanState, requestScan } from "@/lib/promo-store";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ async function handle(request: NextRequest, context: Context, enqueue: boolean) 
   if (!/^\d+$/.test(id) || !getCompanyById(Number(id))) return NextResponse.json({ error: "Компания не найдена" }, { status: 404 });
   if (enqueue) {
     const origin = request.headers.get("origin");
-    if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: "Недопустимый источник запроса" }, { status: 403 });
+    if (!allowedRequestOrigin(origin, request.url, request.headers.get("host"), configuredPublicOrigin())) return NextResponse.json({ error: "Недопустимый источник запроса" }, { status: 403 });
   }
   try {
     const state = await (enqueue ? requestScan(Number(id)) : getScanState(Number(id)));

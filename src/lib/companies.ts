@@ -31,8 +31,8 @@ export const categories: Category[] = [
 
 export const companies: Company[] = [
   {
-    id: 302, name: "Крошка Картошка", logo: "/logos/kroshka-kartoshka.svg",
-    color: "217344", bgColor: "FFF8E8", category: "Быстрое питание",
+    id: 302, name: "Крошка Картошка", logo: "https://resizer.mail.ru/p/1f68813a-5f99-5275-9b56-bf9b3b22b72c/AQAKWh50-9g1ROA1Q9tIscxLDN3IjMMMPI9ELhbZI4XyqixRSexFONqhZxFPnDlj6vTFfgn5-CJShOd66TQWBR0AitM.png",
+    color: "A9522D", bgColor: "FFFFFF", category: "Быстрое питание",
     country: "Россия", founded: 1998, hq: "Москва, Россия", product: "Печёный картофель с наполнителями",
     description: "Российская сеть кафе. Печёный картофель с наполнителями, горячие блюда, салаты и напитки. Купоны и акции опубликованы на официальном сайте; условия доставки зависят от выбранного кафе.",
     website: "https://www.kartoshka.com/",

@@ -299,3 +299,28 @@ html { scroll-behavior: smooth; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* Retro print: bold frames and deliberate motion, with reduced-motion support. */
+.retro-brand { box-shadow: 3px 3px 0 #16213e; transition: transform .2s; }
+.retro-brand:hover { transform: rotate(-8deg); }
+.retro-title { font-size: clamp(3.3rem, 9vw, 8rem); line-height: .95; letter-spacing: -.065em; }
+.animated-word { white-space: nowrap; display: inline-block; }
+.animated-word > span { display: inline-block; animation: letter-arrive .65s both; animation-delay: calc(var(--letter) * 45ms); transition: transform .18s, color .18s; }
+.letter-ink { display: inline-block; transition: transform .18s, color .18s; }
+.animated-word > span:hover .letter-ink { transform: translateY(-10px) rotate(-8deg); color: #ff6b24; }
+@keyframes letter-arrive { from { opacity: 0; transform: translateY(16px) rotate(7deg); } to { opacity: 1; transform: none; } }
+.retro-button, .retro-filter { box-shadow: 3px 3px 0 #16213e; transition: transform .18s, box-shadow .18s; }
+.retro-button:hover:not(:disabled), .retro-filter:hover { transform: translate(-2px,-2px); box-shadow: 5px 5px 0 #16213e; }
+.retro-button:active:not(:disabled), .retro-filter:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 #16213e; }
+.merchant-card, .promo-card, .scan-panel { box-shadow: 4px 4px 0 #16213e; }
+@media (hover: hover) and (pointer: fine) {
+ .merchant-card:hover { transform: translate(-3px,-5px) rotate(-1.5deg); border-color: #16213e; box-shadow: 7px 9px 0 #2458e8; }
+}
+.retro-star { position: absolute; inset: 8%; background: #ff6b24; clip-path: polygon(50% 0%,60% 18%,80% 7%,81% 29%,100% 35%,84% 50%,100% 65%,80% 71%,80% 94%,59% 82%,50% 100%,40% 82%,20% 94%,20% 72%,0% 65%,16% 50%,0% 35%,20% 29%,20% 7%,40% 18%); transition: transform .6s ease; }
+.retro-stamp { position: relative; transform: rotate(-7deg); box-shadow: 6px 6px 0 #16213e; transition: transform .4s; }
+.retro-poster:hover .retro-star { transform: rotate(35deg); }
+.retro-poster:hover .retro-stamp { transform: rotate(4deg) translateY(-6px); }
+@media (prefers-reduced-motion: reduce) {
+ .animated-word > span { opacity: 1; animation: none; }
+ .merchant-card:hover, .retro-brand:hover, .retro-button:hover, .retro-filter:hover, .retro-poster:hover .retro-star, .retro-poster:hover .retro-stamp, .animated-word > span:hover .letter-ink { transform: none; }
+}
