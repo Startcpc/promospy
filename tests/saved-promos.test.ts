@@ -33,3 +33,17 @@ test('100 long Unicode coupon IDs are split below browser/proxy URL limits',asyn
  const ids=Array.from({length:100},(_,i)=>`54:A${i}${'Ж'.repeat(55)}`),batches=savedIdBatches(ids);
  assert.ok(batches.length>1);assert.ok(batches.every(batch=>encodeURIComponent(batch).length<=2000));assert.deepEqual(batches.flatMap(batch=>parseSavedIds(batch)!),ids);
 });
+
+
+test('saved snapshots keep an archived or rejected status after server cache loss',()=>{
+ for(const status of ['expired','rejected']) {
+  const offer={id:'54:ENDED',companyId:54,code:'ENDED',description:'Old campaign',discount:'10%',status,conditions:[],sources:[],found:100,invalidSince:200};
+  const [saved]=parseSavedPromos(JSON.stringify([{...offer,savedAt:1000,snapshot:offer}]));
+  assert.equal(saved.snapshot?.status,status);assert.equal(saved.snapshot?.invalidSince,200);
+ }
+});
+test('invalid calendar timestamps in saved snapshots cannot crash date formatting',()=>{
+ const offer={id:'54:BADDATE',companyId:54,code:'BADDATE',description:'Offer',startsAt:Number.MAX_VALUE,expiresAt:-1,checked:Number.MAX_VALUE,sources:[]};
+ const [saved]=parseSavedPromos(JSON.stringify([{...offer,savedAt:1000,snapshot:offer}]));
+ assert.equal(saved.snapshot?.startsAt,undefined);assert.equal(saved.snapshot?.expiresAt,undefined);
+});

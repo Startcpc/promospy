@@ -81,6 +81,21 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   await batchPage.getByRole('button',{name:'Обновить данные',exact:true}).waitFor({state:'visible'});
   for(let i=0;i<100&&await batchPage.getByRole('button',{name:'Обновить данные',exact:true}).isDisabled();i++)await new Promise(resolve=>setTimeout(resolve,25));
   assert.ok(lookups.length>1);assert.ok(lookups.every(url=>url.length<2150));assert.equal(await batchPage.locator('article').count(),100);
+  // One failed batch must cancel peers rather than leave requests hanging.
+  let requests=0,cancelled=0,release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  batchPage.on('requestfailed',request=>{if(request.url().includes('/api/promocodes/saved?'))cancelled++;});
+  await batchPage.route('**/api/promocodes/saved?**',async route=>{
+   if(++requests===1){await new Promise(resolve=>setTimeout(resolve,100));await route.fulfill({status:503,json:{error:'Batch source failed'}});}
+   else {await gate;await route.fulfill({json:{codes:[],missingIds:[]}}).catch(()=>{});}
+  });
+  try {
+   await batchPage.getByRole('button',{name:'Обновить данные',exact:true}).click();
+   await batchPage.getByRole('alert').filter({hasText:'Batch source failed'}).waitFor();
+   for(let i=0;i<50&&!cancelled;i++)await new Promise(resolve=>setTimeout(resolve,20));
+   assert.ok(requests>1);assert.ok(cancelled>0,'failed grouped requests must cancel their unfinished peers');
+   assert.equal(await batchPage.locator('article').count(),100);
+  }finally{release();}
   await batches.close();
   await page.goto(base+'/company/unknown');
   await page.getByRole('heading',{name:'Страница не найдена',exact:true}).waitFor();
@@ -149,4 +164,57 @@ test('cycle 3: clipboard feedback follows the latest click and its timer restart
   assert.equal(await page.getByText('Код скопирован',{exact:true}).isVisible(),true);
   await page.getByText('Код скопирован',{exact:true}).waitFor({state:'hidden'});
  } finally {await browser?.close();server.kill();}
+});
+
+
+test('open merchant renews an expired cache and retries a failed manual refresh with force',async()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'promospy-renew-ui-')),base='http://127.0.0.1:3140';
+ const server=spawn(process.execPath,['scripts/start.mjs'],{env:{...process.env,PORT:'3140',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
+ try {
+  let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
+  browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
+  const page=await browser.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.clock.install({time:new Date()});
+  let posts=0;const deadline=Date.now()+10000;
+  await page.route('**/api/scan/201*',route=>{
+   if(route.request().method()==='POST')posts++;
+   return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline-900000,nextScan:posts>1?deadline+900000:deadline,error:null,log:[]}});
+  });
+  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.clock.fastForward(31000);await page.waitForTimeout(100);
+  assert.equal(posts,2,'an open page must initiate a new search after its cache expires');
+  let attempts=0;const retryUrls:string[]=[];
+  await page.unroute('**/api/scan/201*');
+  await page.route('**/api/scan/201*',route=>{
+   if(route.request().method()==='POST'){retryUrls.push(route.request().url());if(++attempts===1)return route.fulfill({status:503,json:{error:'Temporary API failure'}});}
+   return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline,nextScan:deadline+900000,error:null,log:[]}});
+  });
+  await page.getByRole('button',{name:'Обновить',exact:true}).click();await page.getByText('Temporary API failure',{exact:false}).waitFor({state:'attached'});
+  await page.clock.fastForward(3100);await page.waitForTimeout(100);
+  assert.equal(attempts,2);assert.ok(retryUrls.every(url=>new URL(url).searchParams.get('refresh')==='1'));
+  assert.deepEqual(errors,[]);
+ }finally{await browser?.close();server.kill();}
+});
+
+
+test('search and favorites work without recent browser AbortSignal helpers',async()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'promospy-legacy-browser-')),base='http://127.0.0.1:3141';
+ const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{env:{...process.env,PORT:'3141',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
+ try {
+  let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
+  browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
+  const page=await browser.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.addInitScript(()=>{
+   Object.defineProperties(AbortSignal,{any:{value:undefined,configurable:true},timeout:{value:undefined,configurable:true}});
+   Object.defineProperty(AbortSignal.prototype,'throwIfAborted',{value:undefined,configurable:true});
+  });
+  await page.goto(base+'/company/54');
+  await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).waitFor({timeout:5000});
+  await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).click();
+  await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
+  await page.getByRole('button',{name:'Условия 1раз',exact:true}).waitFor({timeout:5000});
+  await page.getByText(/^Обновлено:/).waitFor({timeout:5000});assert.deepEqual(errors,[]);
+ }finally{await browser?.close();server.kill();}
 });

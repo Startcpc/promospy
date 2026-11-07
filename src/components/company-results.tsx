@@ -8,6 +8,7 @@ import type { MerchantSearchState } from "@/lib/search-store";
 import { BrandLogo } from "@/components/brand-logo";
 import { SavedPromosLink } from "@/components/saved-promos-link";
 import { PromoCard, formatPromoDate } from "@/components/promo-card";
+import { browserRequestSignal } from "@/lib/browser-request";
 
 export function CompanyResults({ id, initialState }: { id: number; initialState: MerchantSearchState }) {
   const company = getCompanyById(id);
@@ -29,21 +30,25 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
       clearTimeout(timer);
       const request = ++sequence;
       if (force) setRefreshing(true);
+      const bounded = browserRequestSignal(controller.signal, 12000);
       try {
         const response = await fetch(`/api/scan/${id}${force ? "?refresh=1" : ""}`, {
-          method, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]), cache: "no-store",
+          method, signal: bounded.signal, cache: "no-store",
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? "Ошибка загрузки");
         if (controller.signal.aborted || request !== sequence) return;
         setState(data); setError(null); setNow(Date.now()); setStarting(false);
-        const delay = data.status === "running" || data.status === "queued" ? 750 : data.status === "failed" ? Math.max(1000, (data.nextScan ?? Date.now() + 60000) - Date.now()) : 30000;
-        timer = setTimeout(() => { void sync(data.status === "failed" ? "POST" : "GET"); }, delay);
+        const delay = data.status === "running" || data.status === "queued" ? 750 : data.nextScan ? Math.max(1000, Math.min(30000, data.nextScan - Date.now())) : 30000;
+        timer = setTimeout(() => {
+          const due = data.status === "failed" || data.status === "idle" && data.nextScan !== null && data.nextScan <= Date.now();
+          void sync(due ? "POST" : "GET");
+        }, delay);
       } catch (err) {
         if (controller.signal.aborted || request !== sequence) return;
         setError(err instanceof Error ? err.message : "Ошибка загрузки"); setStarting(false);
-        timer = setTimeout(() => { void sync(method); }, 3000);
-      } finally { if (!controller.signal.aborted && request === sequence) setRefreshing(false); }
+        timer = setTimeout(() => { void sync(method, force); }, 3000);
+      } finally { bounded.dispose(); if (!controller.signal.aborted && request === sequence) setRefreshing(false); }
     };
     requestRef.current = force => sync("POST", force);
     // Only mounting the selected merchant starts work. Prefetching is read-only.

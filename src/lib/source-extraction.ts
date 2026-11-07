@@ -54,7 +54,7 @@ export function extractCouponCards(html: string, url: string, company: Company, 
     const card = $(el);
     if (card.find(CARD).length) return;
     if (card.is(EXPLICIT) || card.find(EXPLICIT).length) return;
-    const copy = card.clone(); copy.find('p,div,br,h2,h3,h4').append(' ');
+    const copy = card.clone(); copy.find('p,div,br,h2,h3,h4').prepend(' ').append(' ');
     const code = copy.text().match(/(?:промокод|код купона)\s*[:：]\s*([\p{L}\p{N}][\p{L}\p{N}_-]{1,63})(?![\p{L}\p{N}_-])/iu)?.[1];
     if (code && !/^(?:например|ваш|любой|название)$/i.test(code)) card.attr('data-promospy-code',code);
   });
@@ -82,13 +82,17 @@ export function extractCouponCards(html: string, url: string, company: Company, 
     if (!explicit && (/masked|code-mask|code-tail|code-part/i.test(item.attr('class') ?? '') || /(?:открыть|показать)\s+промокод/i.test(card.text()))) return;
     const heading = card.find('h2,h3,h4,[data-title],.coupon-title').first().text().replace(/\s+/g,' ').trim() || `Промокод ${company.name}`;
     if (!heading || !/промокод|купон|coupon|скидк|заказ|покупк|доставк/i.test(card.text())) return;
-    const clean = card.clone(); clean.find('script,style,button,input').remove(); clean.find('p,div,li,h2,h3,h4,br').append(' ');
+    const clean = card.clone(); clean.find('script,style,button,input').remove(); clean.find('p,div,li,h2,h3,h4,br').prepend(' ').append(' ');
     const terms = clean.text().replace(/\s+/g,' ').trim();
     const attributeDate = item.attr('data-expires-at') ?? card.attr('data-expires-at') ?? card.find('time[datetime]').attr('datetime');
     const writtenDate = terms.match(/(?:до|по|действует до)\s+(\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\s+[а-яё]+\s+\d{4})/i)?.[1];
     const expiresAt = parsePromoDate(attributeDate ?? writtenDate,true);
+    const attributeStart = item.attr('data-starts-at') ?? card.attr('data-starts-at');
+    const startsAt = parsePromoDate(attributeStart);
+    if (attributeDate !== undefined && expiresAt === undefined || attributeStart !== undefined && startsAt === undefined
+      || startsAt !== undefined && expiresAt !== undefined && startsAt > expiresAt) return;
     const amount = heading.match(/(?:скидк[а-яё]*|выгод[а-яё]*)\s*[−–-]?\s*(\d[\d\s]*)\s*(?:₽|руб)/i)?.[1]?.replace(/\s/g,'');
-    const offers = parsePromoCodesFromHtml(JSON.stringify([{promoCode:raw,title:heading,conditions:[terms.slice(0,1500)],expiresAt,discountAmount:amount}]),url,company.id,now);
+    const offers = parsePromoCodesFromHtml(JSON.stringify([{promoCode:raw,title:heading,conditions:[terms.slice(0,1500)],startsAt,expiresAt,discountAmount:amount}]),url,company.id,now);
     for (const offer of offers) {
       if (ended && (positions.get(el) ?? 0) > (positions.get(ended) ?? Infinity)) { offer.status = 'expired'; offer.invalidSince = now; }
       result.push(offer);

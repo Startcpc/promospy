@@ -114,3 +114,18 @@ test('cycle 5: a cache write error does not discard freshly found coupons from t
   const state=await settle(id);assert.equal(state.status,'failed');assert.equal(state.codes[0]?.code,'VOLATILE');assert.equal(state.lastScan,before);assert.match(state.notice!,/сохранить кеш/);
  }finally{chmodSync(dir,0o700);}
 });
+
+
+test('unreadable official source keeps its last confirmation and conditions when another source updates',async()=>{
+ const id=54,source='https://vkusvill.ru/promocodes/',other='https://promokodi.ru/store/vkusvill/';
+ const code={id:'54:CONFIRMED',companyId:id,code:'CONFIRMED',description:'Official conditions',discount:'10%',status:'official' as const,checked:100,conditions:['Order from 1000'],found:100,sources:[{url:source,name:'vkusvill.ru',seenAt:100}],evidence:{method:'source' as const,observedAt:100,sourceUrl:source,message:'Official publication'}};
+ writeFileSync(path.join(dir,`${id}.json`),JSON.stringify({companyId:id,at:100,report:{...report,codes:[code]}}));
+ const fresh={...code,status:'found' as const,description:'Other terms',checked:undefined,evidence:undefined,sources:[{url:other,name:'promokodi.ru',seenAt:200}]};
+ await requestSearch(id,async()=>({...report,codes:[fresh],visited:[other],parsedUrls:[other],sourceResults:[{url:source,official:true,outcome:'error',count:0},{url:other,official:false,outcome:'codes',count:1}]}),true);
+ const state=await settle(id);assert.equal(state.codes[0].status,'official');assert.equal(state.codes[0].checked,100);assert.equal(state.codes[0].description,'Official conditions');assert.equal(state.codes[0].sources.length,2);
+});
+test('unrepresentable timestamps are filtered from disk before rendering',async()=>{
+ const id=201,code={id:'201:BADDATE',companyId:id,code:'BADDATE',description:'Offer',discount:'10%',status:'found',conditions:[],found:1,startsAt:Number.MAX_VALUE,sources:[]};
+ writeFileSync(path.join(dir,`${id}.json`),JSON.stringify({companyId:id,at:Date.now(),report:{...report,codes:[code]}}));
+ assert.deepEqual((await searchState(id)).codes,[]);
+});

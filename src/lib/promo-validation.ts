@@ -2,6 +2,7 @@ import { PROMO_STATUSES, type PromoCode } from './promocodes';
 import type { SearchReport } from './web-search';
 const record = (value: unknown): value is Record<string,unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+export const validTimestamp = (value: unknown): value is number => finite(value) && value <= 8_640_000_000_000_000;
 const strings = (value: unknown, limit: number, length: number): value is string[] => Array.isArray(value) && value.length <= limit && value.every(item => typeof item === 'string' && item.length <= length);
 export function validSourceUrl(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > 2048) return false;
@@ -12,13 +13,14 @@ export function validPromo(value: unknown, companyId: number): value is PromoCod
   if (!record(value) || value.companyId !== companyId || typeof value.code !== 'string' || !/^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value.code)
     || value.id !== `${companyId}:${value.code}` || typeof value.description !== 'string' || value.description.length > 1500
     || typeof value.discount !== 'string' || value.discount.length > 100 || !PROMO_STATUSES.includes(value.status as PromoCode['status'])
-    || !finite(value.found) || !strings(value.conditions,100,1500) || !Array.isArray(value.sources) || value.sources.length > 100) return false;
-  if (!value.sources.every(source => record(source) && validSourceUrl(source.url) && typeof source.name === 'string' && source.name.length <= 255 && finite(source.seenAt))) return false;
-  for (const key of ['checked','validUntil','invalidSince','startsAt','expiresAt','minOrder']) if (value[key] !== undefined && !finite(value[key])) return false;
+    || !validTimestamp(value.found) || !strings(value.conditions,100,1500) || !Array.isArray(value.sources) || value.sources.length > 100) return false;
+  if (!value.sources.every(source => record(source) && validSourceUrl(source.url) && typeof source.name === 'string' && source.name.length <= 255 && validTimestamp(source.seenAt))) return false;
+  for (const key of ['checked','validUntil','invalidSince','startsAt','expiresAt']) if (value[key] !== undefined && !validTimestamp(value[key])) return false;
+  if (value.minOrder !== undefined && !finite(value.minOrder)) return false;
   if (value.verificationDetails !== undefined && typeof value.verificationDetails !== 'string') return false;
   if (value.evidence !== undefined) {
     const evidence = value.evidence;
-    if (!record(evidence) || !['source','browser'].includes(evidence.method as string) || !finite(evidence.observedAt) || typeof evidence.message !== 'string') return false;
+    if (!record(evidence) || !['source','browser'].includes(evidence.method as string) || !validTimestamp(evidence.observedAt) || typeof evidence.message !== 'string') return false;
     for (const key of ['region','accountType','cart']) if (evidence[key] !== undefined && typeof evidence[key] !== 'string') return false;
     if (evidence.sourceUrl !== undefined && !validSourceUrl(evidence.sourceUrl)) return false;
   }

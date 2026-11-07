@@ -8,6 +8,11 @@ export const PUBLIC_OFFICIAL_URLS: Record<number, string> = {
   54: "https://vkusvill.ru/promocodes/",
   201: "https://promo.magnit.ru/",
 };
+export function hasPublicOfficialMarkup(companyId: number, html: string) {
+  const $ = load(html);
+  if (companyId === 54) return $('.js-vv21-promocode-item').length > 0;
+  return companyId === 201 && $('.t-rec .tn-atom').toArray().some(element => $(element).text().trim() === 'Промокод');
+}
 const text = (value: string) => value.replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim();
 function officialCode(companyId: number, code: string, discount: string, conditions: string[], now: number): PromoCode {
   if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(code)) throw new Error("Изменился формат официального кода");

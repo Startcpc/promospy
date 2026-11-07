@@ -6,7 +6,8 @@ import type { Company } from './companies';
 import { sourceIdentity, validSourceUrl } from './promo-validation';
 import type { PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, mergePromoCodes } from './promo-parser';
-import { parsePublicOfficial, PUBLIC_OFFICIAL_URLS } from './official-search';
+import { parsePublicOfficial, hasPublicOfficialMarkup, PUBLIC_OFFICIAL_URLS } from './official-search';
+import { extractOfficialDates } from './promo-terms';
 import { extractCouponCards, isChallengePage, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
@@ -119,7 +120,11 @@ export function parseMerchantPage(html: string, url: string, company: Company, n
   // The actual coupon card determines whether the campaign is archived. A JSON
   // copy may be stale, while a reused code can belong to a new visible campaign.
   const result = mergePromoCodes([...cards,...structured]);
-  return result.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'found',checked:undefined,evidence:undefined,validUntil:undefined,verificationDetails:'Найдено в открытом источнике. Применение не проверялось.'}));
+  return result.map(code => {
+    const dates = official ? extractOfficialDates([code.description,...code.conditions].join(' ')) : {};
+    const startsAt = code.startsAt ?? dates.startsAt, expiresAt = code.expiresAt ?? dates.expiresAt;
+    return {...code,startsAt,expiresAt,status:code.status === 'expired' || expiresAt !== undefined && expiresAt <= now ? 'expired' : 'found',checked:undefined,evidence:undefined,validUntil:undefined,verificationDetails:'Найдено в открытом источнике. Применение не проверялось.'};
+  });
 }
 
 const slugs: Record<number,string> = {5:'burger-king',54:'vkusvill',102:'vkusno-i-tochka',201:'magnit',202:'pyaterochka',203:'yandex-lavka',204:'yandex-market',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
@@ -170,10 +175,8 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
       report.pagesRead++; report.visited.push(url);
       if (official) report.officialPagesRead!++;
       let codes: PromoCode[];
-      try {
-        if (!official || url !== PUBLIC_OFFICIAL_URLS[company.id]) throw new Error('generic');
-        codes = parsePublicOfficial(company.id,html);
-      } catch { codes = parseMerchantPage(html,url,company,Date.now(),official); }
+      if (official && url === PUBLIC_OFFICIAL_URLS[company.id] && hasPublicOfficialMarkup(company.id,html)) codes = parsePublicOfficial(company.id,html);
+      else codes = parseMerchantPage(html,url,company,Date.now(),official);
       if (official) codes = codes.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'official',checked:Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение не проверялось.',evidence:{method:'source',observedAt:Date.now(),sourceUrl:url,message:'Официальная публикация'}}));
       const document = load(html);
       const merchantMatches = matchesMerchant(`${document('title').text()} ${document('h1').text()}`,company);

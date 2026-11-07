@@ -9,6 +9,7 @@ import { useSavedPromos } from "@/hooks/use-saved-promos";
 import { getCompanyById, effectiveStatus, type PromoCode } from "@/lib/promocodes";
 
 import { savedIdBatches } from "@/lib/saved-promos";
+import { browserRequestSignal } from "@/lib/browser-request";
 
 type Lookup = { key: string; codes?: PromoCode[]; error?: string; loadedAt?: number };
 export default function SavedPage() {
@@ -32,13 +33,15 @@ export default function SavedPage() {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
+      const bounded = browserRequestSignal(controller.signal, 15000);
       try {
         const batches = savedIdBatches(idsKey.split(','));
         const codes: PromoCode[] = []; let cursor = 0;
-        const signal = AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]);
+        const signal = bounded.signal;
         await Promise.all(Array.from({length:Math.min(4,batches.length)},async () => {
           while (cursor < batches.length) {
-            const batch = batches[cursor++]; signal.throwIfAborted();
+            const batch = batches[cursor++];
+            if (signal.aborted) throw new Error("Запрос отменён или превышено время ожидания.");
             const response = await fetch(`/api/promocodes/saved?ids=${encodeURIComponent(batch)}`, {cache:'no-store',signal});
             const result = await response.json();
             if (!response.ok) throw new Error(result.error ?? "Не удалось обновить избранное.");
@@ -48,8 +51,10 @@ export default function SavedPage() {
         }));
         if (!controller.signal.aborted) setLookup({ key: requestKey, codes, loadedAt: Date.now() });
       } catch (error) {
+        bounded.abort();
         if (!controller.signal.aborted) setLookup({ key: requestKey, error: error instanceof Error ? error.message : "Не удалось обновить избранное." });
       } finally {
+        bounded.dispose();
         if (!controller.signal.aborted) timer = setTimeout(() => { void load(); }, 30000);
       }
     };

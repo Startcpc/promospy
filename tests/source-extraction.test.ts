@@ -111,3 +111,30 @@ test('cycle 2: matching structured expiry remains attached to the same visible o
  const [code]=parseMerchantPage(page(metadata+offer('<code>DATED99</code>')),url,company);
  assert.equal(code.status,'expired');assert.ok(code.expiresAt);
 });
+
+
+test('invalid official conditions cannot fall back to an undated generic card',async()=>{
+ const broken=page('<article data-promocode="BROKEN99"><h3>Скидка на заказ</h3><p>Промокод: BROKEN99</p><p>Действует до 31.02.2026</p></article>');
+ const report=await searchMerchant(company,new AbortController().signal,async target=>target==='https://vkusvill.ru/promocodes/'?broken:'<title>Empty</title>');
+ assert.equal(report.codes.length,0);assert.ok(report.sourceResults?.some(source=>source.official&&source.outcome==='error'));
+});
+test('a rejected known official card cannot be rescued by stale JSON metadata',async()=>{
+ const fixture=readFileSync(new URL('./fixtures/vkusvill-official.html',import.meta.url),'utf8');
+ const broken=fixture.replace('на&nbsp;первый заказ','до 31.02.2026 на&nbsp;первый заказ')+'<script type="application/json">'+JSON.stringify([{promoCode:'1раз',title:'Previous campaign'}])+'</script>';
+ const report=await searchMerchant(company,new AbortController().signal,async target=>target==='https://vkusvill.ru/promocodes/'?broken:'<title>Empty</title>');
+ assert.equal(report.codes.length,0);assert.ok(report.sourceResults?.some(source=>source.official&&source.outcome==='error'));
+});
+test('generic official cards keep both ends of an explicit campaign period',()=>{
+ const now=Date.parse('2026-11-07T00:00:00Z');
+ const [code]=parseMerchantPage(page(offer('<code>FUTURE99</code><p>С 20.11.2026 по 30.11.2026</p>')),'https://vkusvill.ru/actions/new/',company,now,true);
+ assert.equal(code.startsAt,Date.parse('2026-11-20T00:00:00+03:00'));assert.equal(code.expiresAt,Date.parse('2026-11-30T23:59:59.999+03:00'));
+});
+
+
+test('invalid explicit dates in official metadata cannot become unlimited offers',async()=>{
+ for(const fields of [{expiresAt:'2026-02-31'},{startsAt:'not-a-date'},{startsAt:'2026-11-30',expiresAt:'2026-11-01'}]) {
+  const html=page('<script type="application/json">'+JSON.stringify([{promoCode:'BADJSON99',title:'Скидка на заказ',...fields}])+'</script>');
+  const report=await searchMerchant(company,new AbortController().signal,async target=>target==='https://vkusvill.ru/promocodes/'?html:'<title>Empty</title>');
+  assert.equal(report.codes.length,0);
+ }
+});

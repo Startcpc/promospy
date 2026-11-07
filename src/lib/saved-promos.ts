@@ -1,6 +1,6 @@
 import { getCompanyById, type PromoCode } from "./promocodes";
 
-import { validSourceUrl } from "./promo-validation";
+import { validSourceUrl, validTimestamp } from "./promo-validation";
 
 export const SAVED_PROMOS_KEY = "promospy:saved-promos:v1";
 export const MAX_SAVED_PROMOS = 100;
@@ -20,18 +20,19 @@ export function parseSavedPromos(raw: string | null): SavedPromo[] {
       const item = entry as Record<string, unknown>;
       if (!validOfferId(item.id) || typeof item.companyId !== "number" || !getCompanyById(item.companyId)
         || typeof item.code !== "string" || !/^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(item.code)
-        || typeof item.savedAt !== "number" || !Number.isFinite(item.savedAt) || item.savedAt < 0) continue;
+        || !validTimestamp(item.savedAt)) continue;
       let snapshot: PromoCode | undefined;
       const rawOffer = item.snapshot as Partial<PromoCode> | undefined;
       if (rawOffer && rawOffer.id === item.id && rawOffer.code === item.code && rawOffer.companyId === item.companyId && typeof rawOffer.description === "string") {
         const sources = Array.isArray(rawOffer.sources) ? rawOffer.sources.filter(source => {
           return !!source && validSourceUrl(source.url);
-        }).slice(0,10).map(source => ({ url: source.url, name: new URL(source.url).hostname, seenAt: typeof source.seenAt === "number" && Number.isFinite(source.seenAt) && source.seenAt >= 0 ? source.seenAt : item.savedAt as number })) : [];
-        snapshot = { id: item.id, code: item.code, companyId: item.companyId, found: typeof rawOffer.found === "number" && Number.isFinite(rawOffer.found) && rawOffer.found >= 0 ? rawOffer.found : item.savedAt, status: "found",
+        }).slice(0,10).map(source => ({ url: source.url, name: new URL(source.url).hostname, seenAt: validTimestamp(source.seenAt) ? source.seenAt : item.savedAt as number })) : [];
+        snapshot = { id: item.id, code: item.code, companyId: item.companyId, found: validTimestamp(rawOffer.found) ? rawOffer.found : item.savedAt, status: rawOffer.status === "expired" || rawOffer.status === "rejected" ? rawOffer.status : "found",
           description: rawOffer.description.slice(0,400), discount: typeof rawOffer.discount === "string" ? rawOffer.discount.slice(0,100) : "По условиям источника",
           conditions: Array.isArray(rawOffer.conditions) ? rawOffer.conditions.filter((value): value is string => typeof value === "string").slice(0,20).map(value => value.slice(0,500)) : [], sources,
-          expiresAt: typeof rawOffer.expiresAt === "number" && Number.isFinite(rawOffer.expiresAt) ? rawOffer.expiresAt : undefined,
-          startsAt: typeof rawOffer.startsAt === "number" && Number.isFinite(rawOffer.startsAt) && rawOffer.startsAt >= 0 ? rawOffer.startsAt : undefined,
+          expiresAt: validTimestamp(rawOffer.expiresAt) ? rawOffer.expiresAt : undefined,
+          startsAt: validTimestamp(rawOffer.startsAt) ? rawOffer.startsAt : undefined,
+          invalidSince: validTimestamp(rawOffer.invalidSince) ? rawOffer.invalidSince : undefined,
           minOrder: typeof rawOffer.minOrder === "number" && Number.isFinite(rawOffer.minOrder) && rawOffer.minOrder >= 0 ? rawOffer.minOrder : undefined,
           verificationDetails: "Сохранённая копия. Применение не проверялось.",
         };

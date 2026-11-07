@@ -32,7 +32,7 @@ export async function searchState(id: number): Promise<MerchantSearchState> {
   const report = job?.report ?? failure?.report ?? result?.report;
   const {codes: _codes,...summary} = report ?? {codes:[]};
   return {
-    codes: job ? mergeWithSaved(job.report?.codes ?? [],result?.report.codes ?? []) : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
+    codes: job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
     status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:result?.at ?? null,
     nextScan:failure?.retry ?? (result ? result.at + 15*60000 : null),error:null,log:[],
     ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
@@ -44,9 +44,19 @@ function resultCodes(report: SearchReport, previous: PromoCode[]) {
   const refreshed = new Set((report.parsedUrls ?? report.visited).map(sourceIdentity));
   const retained = previous.flatMap(code => {
     const sources = code.sources.filter(source => !refreshed.has(sourceIdentity(source.url)));
-    return sources.length ? [{...code,sources,status:code.status === 'expired' ? 'expired' as const : 'found' as const,verificationDetails:'Сохранено с предыдущего чтения. Свежая публикация не подтверждена.'}] : [];
+    const officialSource = code.evidence?.sourceUrl;
+    const keepsOfficial = code.status === 'official' && officialSource && sources.some(source => sourceIdentity(source.url) === sourceIdentity(officialSource));
+    return sources.length ? [{...code,sources,...(!keepsOfficial && code.status !== 'expired' && code.status !== 'rejected' ? {status:'found' as const,verificationDetails:'Сохранено с предыдущего чтения. Свежая публикация не подтверждена.'} : {})}] : [];
   });
-  return mergeWithSaved(report.codes,retained);
+  const byId = new Map(retained.map(code => [code.id,code]));
+  const fresh = report.codes.map(code => {
+    const saved = byId.get(code.id);
+    if (!saved) return code;
+    const preferred = saved.status === 'official' && code.status !== 'official' ? saved : code;
+    const sources = new Map([...preferred.sources,...code.sources,...saved.sources].map(source => [sourceIdentity(source.url),source]));
+    return {...preferred,sources:[...sources.values()]};
+  });
+  return mergeWithSaved(fresh,retained);
 }
 async function persist(id: number, report: SearchReport) {
   const previous = await cached(id);

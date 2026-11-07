@@ -87,8 +87,11 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
   const conditionText = [description, ...conditions].join(" ");
   const minimum = field(record, ["minOrder", "minimumOrder", "min_order"])
     ?? conditionText.match(/(?:заказ[а-яё]*|покупк[а-яё]*|сумм[а-яё]*)(?:\s+на\s+сумму)?\s*(?:от|не\s+менее)\s*([\d\s\u00a0\u202f]+(?:[.,]\d{1,2})?)/i)?.[1];
-  const expiresAt = parsePromoDate(field(record, ["expiresAt", "dateEnd", "endDate", "validThrough", "expirationDate"]), true);
-  const startsAt = parsePromoDate(field(record, ["startsAt", "startDate", "validFrom"]));
+  const rawEnd = field(record, ["expiresAt", "dateEnd", "endDate", "validThrough", "expirationDate"]);
+  const rawStart = field(record, ["startsAt", "startDate", "validFrom"]);
+  const expiresAt = parsePromoDate(rawEnd, true), startsAt = parsePromoDate(rawStart);
+  if (rawEnd !== undefined && expiresAt === undefined || rawStart !== undefined && startsAt === undefined
+    || startsAt !== undefined && expiresAt !== undefined && startsAt > expiresAt) return;
   return {
     id: `${companyId}:${code}`, companyId, code, description, discount,
     status: expiresAt !== undefined && expiresAt <= now ? "expired" : "found",

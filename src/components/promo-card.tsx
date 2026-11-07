@@ -60,11 +60,11 @@ export function PromoCard({ code }: { code: PromoCode }) {
       {code.minOrder !== undefined && <p>Минимальный заказ: {code.minOrder} ₽</p>}
       {code.startsAt !== undefined && code.startsAt > Date.now() && <p>Акция ещё не началась.</p>}
       {code.startsAt !== undefined && <p>Начало: {formatPromoDate(code.startsAt)} МСК</p>}
-      <p>{code.expiresAt ? `Срок по источнику: до ${formatPromoDate(code.expiresAt)} МСК` : "Срок действия в источнике не указан"}</p>
+      <p>{code.expiresAt !== undefined ? `Срок по источнику: до ${formatPromoDate(code.expiresAt)} МСК` : "Срок действия в источнике не указан"}</p>
       {code.conditions.map((condition, index) => <p key={index}>{condition}</p>)}
       {code.checked !== undefined && <p>{code.evidence?.method === "source" ? "Проверка официального источника" : "Попытка проверки"}: {formatPromoDate(code.checked)} МСК</p>}
       {code.verificationDetails && <p>{code.verificationDetails}</p>}
-      {status === "found" && code.checked && <p>Актуальность сейчас не подтверждена.</p>}
+      {status === "found" && code.checked !== undefined && <p>Актуальность сейчас не подтверждена.</p>}
       {status === "found" && code.evidence?.method === "source" && <p>Код ранее публиковался на официальном сайте. Свежего подтверждения публикации нет; это не означает, что код недействителен.</p>}
       {code.evidence && <p>{[code.evidence.region, code.evidence.accountType, code.evidence.cart].filter(Boolean).join(" · ")}</p>}
       {status === "verified" && <p>Результат относится к указанным условиям тестовой корзины.</p>}
