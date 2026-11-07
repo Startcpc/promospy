@@ -126,6 +126,8 @@ class LauncherTests(unittest.TestCase):
             launcher.main()
             prepare.assert_not_called()
             self.assertEqual(run.call_args.args[0][-1], 'backup')
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index('--import') + 1], (launcher.ROOT / 'scripts/register-ts.mjs').as_uri())
 
     def test_restore_refuses_a_running_server_before_touching_data(self):
         with socket.socket() as busy:
@@ -135,6 +137,17 @@ class LauncherTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'занят'):
                     launcher.main()
                 run.assert_not_called()
+
+    def test_restore_uses_a_portable_loader_url_and_skips_dependency_setup(self):
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0))
+            port = probe.getsockname()[1]
+        with patch.object(launcher, 'system_node', return_value=Path('/node')), patch.object(launcher, 'prepare_runtime') as prepare, patch.object(launcher, 'run') as run, patch('sys.argv', ['start.py', '--restore', 'copy.json', '--port', str(port)]):
+            launcher.main()
+            prepare.assert_not_called()
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index('--import') + 1], (launcher.ROOT / 'scripts/register-ts.mjs').as_uri())
+            self.assertEqual(command[-2], 'restore')
 
 
 if __name__ == '__main__':

@@ -3,13 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp,readFile,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 test('shutdown checkpoints observed results and a new process resumes an interrupted search',async()=>{
   const directory=await mkdtemp(path.join(tmpdir(),'promospy-checkpoint-'));
-  const loader=fileURLToPath(new URL('../scripts/register-ts.mjs',import.meta.url)),storeModuleUrl=new URL('../src/lib/search-store.ts',import.meta.url).href;
+  const loader=new URL('../scripts/register-ts.mjs',import.meta.url).href,storeModuleUrl=new URL('../src/lib/search-store.ts',import.meta.url).href;
   const code={id:'54:CHECKPOINT20',companyId:54,code:'CHECKPOINT20',description:'Observed fixture',discount:'20%',status:'official',found:100,checked:100,conditions:[],sources:[{url:'https://vkusvill.ru/promocodes/',name:'vkusvill.ru',seenAt:100}]};
   const report={engineVersion:ENGINE_VERSION,phase:'official',codes:[code],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:[code.sources[0].url],parsedUrls:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:true,outcome:'codes',count:1}]};
   const options={encoding:'utf8' as const,env:{...process.env,PROMO_SEARCH_DATA_DIR:directory},timeout:10000};

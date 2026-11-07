@@ -61,7 +61,7 @@ test('restore refuses unrelated folders and backup refuses partially corrupt rec
 }));
 test('cache CLI works from another working directory and restores without changing timestamps',()=>temporary(async root=>{
  const data=path.join(root,'data'),copies=path.join(root,'copies');await mkdir(data);await writeFile(path.join(data,'54.json'),JSON.stringify(entry));
- const loader=fileURLToPath(new URL('../scripts/register-ts.mjs',import.meta.url)),script=fileURLToPath(new URL('../scripts/search-cache.mjs',import.meta.url));
+ const loader=new URL('../scripts/register-ts.mjs',import.meta.url).href,script=fileURLToPath(new URL('../scripts/search-cache.mjs',import.meta.url));
  const options={cwd:root,env:{...process.env,PROMO_SEARCH_DATA_DIR:data,PROMO_SEARCH_BACKUP_DIR:copies},encoding:'utf8' as const};
  const output=execFileSync(process.execPath,['--import',loader,script,'backup'],options);assert.match(output,/Сохранено магазинов: 1/);
  const file=path.join(copies,(await readdir(copies))[0]);await writeFile(path.join(data,'54.json'),'{');

@@ -218,7 +218,7 @@ def main():
         return
     if args.backup:
         node = node or portable_node()
-        run([node, '--import', ROOT / 'scripts/register-ts.mjs', ROOT / 'scripts/search-cache.mjs', 'backup'], os.environ.copy())
+        run([node, '--import', (ROOT / 'scripts/register-ts.mjs').as_uri(), ROOT / 'scripts/search-cache.mjs', 'backup'], os.environ.copy())
         return
     if not 1 <= args.port <= 65535:
         parser.error('Порт должен быть от 1 до 65535.')
@@ -237,7 +237,7 @@ def main():
             raise RuntimeError(f'Порт {port} занят. Остановите другой сервер или запустите: python3 start.py --port 3001')
         if args.restore:
             node = node or portable_node()
-            run([node, '--import', ROOT / 'scripts/register-ts.mjs', ROOT / 'scripts/search-cache.mjs', 'restore', Path(args.restore).expanduser().resolve()], os.environ.copy())
+            run([node, '--import', (ROOT / 'scripts/register-ts.mjs').as_uri(), ROOT / 'scripts/search-cache.mjs', 'restore', Path(args.restore).expanduser().resolve()], os.environ.copy())
             return
         node, env = prepare_runtime(node,args.dev)
     env.update(PORT=str(port), HOSTNAME='127.0.0.1')

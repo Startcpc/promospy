@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { parseMerchantPage } from '../src/lib/web-search';
 import { getCompanyById } from '../src/lib/promocodes';
+const networkPreload=new URL('./helpers/official-network.mjs',import.meta.url).href;
 
 test('home makes no scans; native links and favorites work without Prisma, keys or carts',async()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-web-'));
@@ -111,7 +112,7 @@ test('empty cache -> automatic search -> official cards; refresh fetches sources
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-official-ui-'));
  const requestLog=path.join(directory,'requests.txt');
  const base='http://127.0.0.1:3138';
- const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{
+ const server=spawn(process.execPath,['--import',networkPreload,'scripts/start.mjs'],{
   env:{...process.env,PORT:'3138',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory,PROMO_TEST_REQUEST_LOG:requestLog},stdio:['ignore','pipe','pipe'],
  });
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);
@@ -144,7 +145,7 @@ test('empty cache -> automatic search -> official cards; refresh fetches sources
 
 test('cycle 3: clipboard feedback follows the latest click and its timer restarts',async()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-copy-ui-')),base='http://127.0.0.1:3139';
- const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{env:{...process.env,PORT:'3139',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ const server=spawn(process.execPath,['--import',networkPreload,'scripts/start.mjs'],{env:{...process.env,PORT:'3139',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
  try {
   let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
@@ -211,7 +212,7 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
 
 test('search and favorites work without recent browser AbortSignal helpers',async()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-legacy-browser-')),base='http://127.0.0.1:3141';
- const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{env:{...process.env,PORT:'3141',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ const server=spawn(process.execPath,['--import',networkPreload,'scripts/start.mjs'],{env:{...process.env,PORT:'3141',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
  try {
   let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
@@ -234,7 +235,7 @@ test('search and favorites work without recent browser AbortSignal helpers',asyn
 test('favorites transfer survives reload and invalid files; hidden and offline pages pause requests',async()=>{
  const {readFileSync}=await import('node:fs');
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-transfer-ui-')),base='http://127.0.0.1:3142';
- const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{env:{...process.env,PORT:'3142',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ const server=spawn(process.execPath,['--import',networkPreload,'scripts/start.mjs'],{env:{...process.env,PORT:'3142',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
  try {
   let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
