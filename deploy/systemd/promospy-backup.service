@@ -1,0 +1,16 @@
+[Unit]
+Description=PromoSpy search cache backup
+
+[Service]
+Type=oneshot
+User=promospy
+Group=promospy
+WorkingDirectory=/opt/promospy
+EnvironmentFile=/etc/promospy.env
+ExecStart=/usr/bin/node --import ./scripts/register-ts.mjs scripts/search-cache.mjs backup
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/promospy

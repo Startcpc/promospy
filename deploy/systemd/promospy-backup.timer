@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily PromoSpy search cache backup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=10m
+Persistent=true
+Unit=promospy-backup.service
+
+[Install]
+WantedBy=timers.target

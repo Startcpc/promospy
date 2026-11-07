@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseSavedIds, parseSavedPromos, MAX_SAVED_PROMOS } from "../src/lib/saved-promos";
+import { parseSavedIds, parseSavedPromos, MAX_SAVED_PROMOS, exportSavedPromos, importSavedPromos } from "../src/lib/saved-promos";
 
 test("saved data preserves Cyrillic case and identity, discards cached statuses and corrupt entries", () => {
   const valid = { id: "54:1раз", companyId: 54, code: "1раз", savedAt: 1000 };
@@ -46,4 +46,29 @@ test('invalid calendar timestamps in saved snapshots cannot crash date formattin
  const offer={id:'54:BADDATE',companyId:54,code:'BADDATE',description:'Offer',startsAt:Number.MAX_VALUE,expiresAt:-1,checked:Number.MAX_VALUE,sources:[]};
  const [saved]=parseSavedPromos(JSON.stringify([{...offer,savedAt:1000,snapshot:offer}]));
  assert.equal(saved.snapshot?.startsAt,undefined);assert.equal(saved.snapshot?.expiresAt,undefined);
+});
+
+test('favorites export/import keeps Unicode codes and conditions without positive cached claims',()=>{
+ const offer={id:'54:1раз',companyId:54,code:'1раз',description:'Первый заказ',discount:'10%',status:'official',found:100,startsAt:200,conditions:['От 1000 рублей'],sources:[{url:'https://vkusvill.ru/promocodes/',name:'vkusvill.ru',seenAt:100}]};
+ const source=parseSavedPromos(JSON.stringify([{...offer,snapshot:offer,savedAt:300}]));
+ const result=importSavedPromos(exportSavedPromos(source),[]);
+ assert.equal(result.added,1);assert.deepEqual(result.items,source);assert.equal(result.items[0].snapshot?.status,'found');
+});
+test('favorites import appends new codes, preserves existing copies and can enrich a missing snapshot',()=>{
+ const current=[{id:'54:KEEP',companyId:54,code:'KEEP',savedAt:100},{id:'54:OTHER',companyId:54,code:'OTHER',savedAt:200}];
+ const incoming=[{...current[0],savedAt:900},{id:'201:NEW',companyId:201,code:'NEW',savedAt:300}];
+ const result=importSavedPromos(exportSavedPromos(incoming),current);
+ assert.equal(result.added,1);assert.equal(result.items.length,3);assert.equal(result.items[0].savedAt,100);
+ assert.equal(importSavedPromos(exportSavedPromos(result.items),result.items).added,0);
+});
+test('corrupt, foreign, oversized and duplicate favorites files fail without altering the current list',()=>{
+ const current=[{id:'54:KEEP',companyId:54,code:'KEEP',savedAt:100}],before=JSON.stringify(current);
+ const envelope=(items:unknown)=>JSON.stringify({format:'promospy-favorites',version:1,items});
+ for(const raw of ['{','null','[]',JSON.stringify({format:'other',version:1,items:[]}),envelope([null]),envelope([current[0],current[0]]),' '.repeat(4_000_001)])assert.throws(()=>importSavedPromos(raw,current));
+ assert.equal(JSON.stringify(current),before);
+});
+test('favorites import refuses an overflowing merge without silently dropping either list',()=>{
+ const current=Array.from({length:100},(_,i)=>({id:`54:OLD${i}`,companyId:54,code:`OLD${i}`,savedAt:100}));
+ const raw=exportSavedPromos([{id:'201:EXTRA',companyId:201,code:'EXTRA',savedAt:200}]);
+ assert.throws(()=>importSavedPromos(raw,current),/больше 100/);assert.equal(current.length,100);
 });

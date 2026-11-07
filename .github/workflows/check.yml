@@ -1,0 +1,49 @@
+name: Project checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: 22
+            python: '3.9'
+          - node: 24
+            python: '3.13'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:search
+      - run: pnpm test:database
+      - run: pnpm test:launcher
+      - if: matrix.node == 22
+        run: pnpm exec playwright install --with-deps chromium
+      - if: matrix.node == 22
+        run: pnpm build
+      - if: matrix.node == 22
+        run: pnpm test:ui

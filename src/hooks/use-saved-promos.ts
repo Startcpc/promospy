@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { PromoCode } from "@/lib/promocodes";
-import { MAX_SAVED_PROMOS, parseSavedPromos, SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
+import { MAX_SAVED_PROMOS, parseSavedPromos, importSavedPromos, SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
 
 const CHANGED_EVENT = "promospy:saved-promos-changed";
 const EMPTY: SavedPromo[] = [];
@@ -39,6 +39,9 @@ export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId"
   if (save && current.length >= MAX_SAVED_PROMOS) return `Можно сохранить до ${MAX_SAVED_PROMOS} кодов. Удалите ненужный код и попробуйте снова.`;
   const next = save ? [{ id: offer.id, companyId: offer.companyId, code: offer.code, savedAt: Date.now(), snapshot: offer }, ...current]
     : current.filter(item => item.id !== offer.id);
+  return storeSavedPromos(next);
+}
+function storeSavedPromos(next: unknown[]): string | null {
   try {
     const validated = parseSavedPromos(JSON.stringify(next));
     if (validated.length !== next.length) return "Список слишком большой. Удалите несколько кодов.";
@@ -52,4 +55,8 @@ export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId"
     window.dispatchEvent(new Event(CHANGED_EVENT));
     return "Браузер запретил постоянное хранение. Избранное доступно только до перезагрузки или закрытия этой вкладки.";
   }
+}
+export function importFavorites(raw: string) {
+  const result = importSavedPromos(raw,snapshot());
+  return {added:result.added,warning:storeSavedPromos(result.items)};
 }

@@ -60,6 +60,9 @@ class LauncherTests(unittest.TestCase):
                 (root / '.npmrc').write_text('changed store configuration')
                 launcher.prepare_runtime(root / 'node', False)
                 self.assertEqual(len(calls), 4)
+                (root / '.npmrc').unlink()
+                launcher.prepare_runtime(root / 'node', False)
+                self.assertEqual(len(calls), 6)
 
     def test_moving_a_prepared_folder_to_another_platform_reinstalls_native_dependencies(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -117,6 +120,21 @@ class LauncherTests(unittest.TestCase):
     def test_system_node_with_a_broken_npm_falls_back_to_portable_runtime(self):
         with patch.object(launcher.shutil, 'which', return_value='/node'), patch.object(launcher, 'npm_cli', return_value=Path('/npm-cli.js')), patch.object(launcher.subprocess, 'check_output', side_effect=['v22.23.4', '/node', subprocess.CalledProcessError(1, 'npm')]):
             self.assertIsNone(launcher.system_node())
+
+    def test_backup_does_not_install_dependencies_or_start_a_server(self):
+        with patch.object(launcher, 'system_node', return_value=Path('/node')), patch.object(launcher, 'prepare_runtime') as prepare, patch.object(launcher, 'run') as run, patch('sys.argv', ['start.py', '--backup']):
+            launcher.main()
+            prepare.assert_not_called()
+            self.assertEqual(run.call_args.args[0][-1], 'backup')
+
+    def test_restore_refuses_a_running_server_before_touching_data(self):
+        with socket.socket() as busy:
+            busy.bind(('127.0.0.1', 0))
+            port = busy.getsockname()[1]
+            with patch.object(launcher, 'system_node', return_value=Path('/node')), patch.object(launcher, 'run') as run, patch('sys.argv', ['start.py', '--restore', 'copy.json', '--port', str(port)]):
+                with self.assertRaisesRegex(RuntimeError, 'занят'):
+                    launcher.main()
+                run.assert_not_called()
 
 
 if __name__ == '__main__':

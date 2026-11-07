@@ -1,4 +1,5 @@
 # Native dependencies used by Next.js, Tailwind and its lint toolchain.
+storeDir: .pnpm-store
 allowBuilds:
   '@parcel/watcher': true
   '@swc/core': true

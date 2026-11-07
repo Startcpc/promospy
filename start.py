@@ -180,7 +180,10 @@ def prepare_runtime(node, dev):
     platform_changed = bool(state) and (state.get('platform') != target_platform or state.get('projectRoot') != project_path)
     if state.get('platform') != target_platform or state.get('projectRoot') != project_path:
         state = {'platform': target_platform, 'projectRoot': project_path}
-    dependencies = fingerprint([ROOT / name for name in ('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc')])
+    dependency_files = [ROOT / name for name in ('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml')]
+    if (ROOT / '.npmrc').is_file():
+        dependency_files.append(ROOT / '.npmrc')
+    dependencies = fingerprint(dependency_files)
     if state.get('dependencies') != dependencies or not (ROOT / 'node_modules/next/package.json').exists():
         print('Подготавливаем зависимости. При повторном запуске этот шаг пропускается.', flush=True)
         run(pm + ['install', '--frozen-lockfile', '--store-dir', str(ROOT / '.pnpm-store')] + (['--force'] if platform_changed else []), env)
@@ -204,11 +207,18 @@ def main():
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--dev', action='store_true', help='режим редактирования с обновлением страницы')
     parser.add_argument('--port', type=int, default=3000)
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument('--backup', action='store_true', help='сохранить резервную копию результатов поиска')
+    actions.add_argument('--restore', metavar='FILE', help='восстановить результаты из копии при остановленном сайте')
     args = parser.parse_args()
     node = system_node()
     if args.check:
         print(f'Node.js: {node or "будет загружен в .runtime при первом запуске"}')
         print('Git и GitHub для работы приложения не нужны. Первый запуск требует интернет.')
+        return
+    if args.backup:
+        node = node or portable_node()
+        run([node, '--import', ROOT / 'scripts/register-ts.mjs', ROOT / 'scripts/search-cache.mjs', 'backup'], os.environ.copy())
         return
     if not 1 <= args.port <= 65535:
         parser.error('Порт должен быть от 1 до 65535.')
@@ -225,6 +235,10 @@ def main():
             reservation.listen(1)
         except OSError:
             raise RuntimeError(f'Порт {port} занят. Остановите другой сервер или запустите: python3 start.py --port 3001')
+        if args.restore:
+            node = node or portable_node()
+            run([node, '--import', ROOT / 'scripts/register-ts.mjs', ROOT / 'scripts/search-cache.mjs', 'restore', Path(args.restore).expanduser().resolve()], os.environ.copy())
+            return
         node, env = prepare_runtime(node,args.dev)
     env.update(PORT=str(port), HOSTNAME='127.0.0.1')
     url = f'http://localhost:{port}'

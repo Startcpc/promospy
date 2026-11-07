@@ -10,6 +10,8 @@ import { getCompanyById, effectiveStatus, type PromoCode } from "@/lib/promocode
 
 import { savedIdBatches } from "@/lib/saved-promos";
 import { browserRequestSignal } from "@/lib/browser-request";
+import { FavoritesTransfer } from "@/components/favorites-transfer";
+import { canRequestFromPage, watchPageActivity } from "@/lib/page-activity";
 
 type Lookup = { key: string; codes?: PromoCode[]; error?: string; loadedAt?: number };
 export default function SavedPage() {
@@ -19,21 +21,28 @@ export default function SavedPage() {
   const [retry, setRetry] = useState(0);
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [offline, setOffline] = useState(false);
   const idsKey = items.map(item => item.id).join(",");
   const requestKey = `${idsKey}:${retry}`;
   const current = lookup?.key === requestKey ? lookup : null;
-  const loading = !!items.length && !current;
+  const loading = !!items.length && !current && !offline;
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => {if(!document.hidden)setNow(Date.now());}, 30000);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
     if (!idsKey) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    let sequence = 0;
+    let activeRequest: ReturnType<typeof browserRequestSignal> | undefined;
     const load = async () => {
+      clearTimeout(timer);setOffline(navigator.onLine===false);
+      if(!canRequestFromPage())return;
+      const request=++sequence;activeRequest?.abort();activeRequest?.dispose();
       const bounded = browserRequestSignal(controller.signal, 15000);
+      activeRequest=bounded;
       try {
         const batches = savedIdBatches(idsKey.split(','));
         const codes: PromoCode[] = []; let cursor = 0;
@@ -49,17 +58,20 @@ export default function SavedPage() {
             codes.push(...result.codes);
           }
         }));
-        if (!controller.signal.aborted) setLookup({ key: requestKey, codes, loadedAt: Date.now() });
+        if (!controller.signal.aborted && request===sequence) setLookup({ key: requestKey, codes, loadedAt: Date.now() });
       } catch (error) {
         bounded.abort();
-        if (!controller.signal.aborted) setLookup({ key: requestKey, error: error instanceof Error ? error.message : "Не удалось обновить избранное." });
+        if (!controller.signal.aborted && request===sequence) setLookup({ key: requestKey, error: error instanceof Error ? error.message : "Не удалось обновить избранное." });
       } finally {
         bounded.dispose();
-        if (!controller.signal.aborted) timer = setTimeout(() => { void load(); }, 30000);
+        if (!controller.signal.aborted && request===sequence) {activeRequest=undefined;timer = setTimeout(() => { void load(); }, 30000);}
       }
     };
+    const stopWatching=watchPageActivity(()=>{setNow(Date.now());void load();},()=>{
+      setOffline(navigator.onLine===false);clearTimeout(timer);sequence++;activeRequest?.abort();activeRequest?.dispose();activeRequest=undefined;
+    });
     void load();
-    return () => { controller.abort(); clearTimeout(timer); };
+    return () => { stopWatching();controller.abort(); clearTimeout(timer); };
   }, [idsKey, requestKey]);
 
   const byId = new Map((current?.codes ?? []).map(code => [code.id, code]));
@@ -75,6 +87,8 @@ export default function SavedPage() {
       <h1 className="flex items-center gap-3 text-3xl font-bold"><Heart aria-hidden="true" className="h-7 w-7 text-orange-600" />Избранное{hydrated && items.length > 0 ? ` (${items.length})` : ""}</h1>
       <p className="mt-3 text-sm text-muted-foreground">Ваши коды — в одном месте. Избранное хранится в этом браузере.</p>
     </header>
+    <FavoritesTransfer />
+    {offline&&<p role="status" className="mb-4 text-sm text-muted-foreground">Нет подключения. Сохранённые копии доступны; обновление продолжится после подключения.</p>}
     {!hydrated ? <p role="status">Загружаем избранное…</p> : items.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center">
       <p className="font-semibold">Пока нет сохранённых кодов</p>
       <p className="mt-2 text-sm text-muted-foreground">Нажмите сердечко на карточке промокода, чтобы быстро вернуться к нему перед заказом.</p>

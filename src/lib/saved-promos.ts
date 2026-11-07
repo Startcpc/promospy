@@ -4,6 +4,7 @@ import { validSourceUrl, validTimestamp } from "./promo-validation";
 
 export const SAVED_PROMOS_KEY = "promospy:saved-promos:v1";
 export const MAX_SAVED_PROMOS = 100;
+export const MAX_FAVORITES_FILE_BYTES = 4_000_000;
 export type SavedPromo = Pick<PromoCode, "id" | "companyId" | "code"> & { savedAt: number; snapshot?: PromoCode };
 export function validOfferId(value: unknown): value is string {
   return typeof value === "string" && /^[\p{L}\p{N}_:-]{1,128}$/u.test(value);
@@ -60,4 +61,31 @@ export function savedIdBatches(ids: string[], limit = 2000): string[] {
   }
   if (current) batches.push(current);
   return batches;
+}
+
+export function exportSavedPromos(items: SavedPromo[], now = Date.now()): string {
+  const validated = parseSavedPromos(JSON.stringify(items));
+  if (validated.length !== items.length) throw new Error('Не удалось подготовить избранное к переносу.');
+  return JSON.stringify({format:'promospy-favorites',version:1,exportedAt:now,items:validated},null,2);
+}
+
+export function importSavedPromos(raw: string, current: SavedPromo[]): {items: SavedPromo[]; added: number} {
+  if (new TextEncoder().encode(raw).length > MAX_FAVORITES_FILE_BYTES) throw new Error('Файл слишком большой. Максимум — 4 МБ.');
+  let value: unknown;
+  try {value = JSON.parse(raw);} catch {throw new Error('Не удалось прочитать JSON-файл.');}
+  if (!value || typeof value !== 'object') throw new Error('Выберите файл избранного PromoSpy.');
+  const data = value as Record<string,unknown>;
+  if (data.format !== 'promospy-favorites' || data.version !== 1 || !Array.isArray(data.items) || data.items.length > MAX_SAVED_PROMOS) throw new Error('Неизвестный формат файла избранного.');
+  const incoming = parseSavedPromos(JSON.stringify(data.items));
+  if (incoming.length !== data.items.length || data.items.some((item,index) => item?.snapshot && !incoming[index]?.snapshot)) throw new Error('В файле есть повреждённые или повторяющиеся записи. Избранное не изменено.');
+  const merged = new Map(current.map(item => [item.id,item]));
+  for (const item of incoming) {
+    const existing = merged.get(item.id);
+    if (!existing) merged.set(item.id,item);
+    else if (!existing.snapshot && item.snapshot) merged.set(item.id,{...existing,snapshot:item.snapshot});
+  }
+  if (merged.size > MAX_SAVED_PROMOS) throw new Error(`Вместе получится больше ${MAX_SAVED_PROMOS} кодов. Удалите ненужные и повторите импорт.`);
+  const items = parseSavedPromos(JSON.stringify([...merged.values()]));
+  if (items.length !== merged.size) throw new Error('Объединённый список слишком большой. Избранное не изменено.');
+  return {items,added:merged.size-current.length};
 }

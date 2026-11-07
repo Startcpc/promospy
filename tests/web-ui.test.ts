@@ -193,6 +193,16 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
   await page.getByRole('button',{name:'Обновить',exact:true}).click();await page.getByText('Temporary API failure',{exact:false}).waitFor({state:'attached'});
   await page.clock.fastForward(3100);await page.waitForTimeout(100);
   assert.equal(attempts,2);assert.ok(retryUrls.every(url=>new URL(url).searchParams.get('refresh')==='1'));
+  // A wrong wall clock must not turn a fifteen-minute TTL into a POST loop.
+  await page.unroute('**/api/scan/201*');posts=0;
+  const serverTime=Date.now();
+  await page.route('**/api/scan/201*',route=>{
+   if(route.request().method()==='POST')posts++;
+   return route.fulfill({json:{codes:[],status:'idle',lastScan:serverTime,nextScan:serverTime+900000,serverTime,error:null,log:[]}});
+  });
+  await page.clock.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.clock.fastForward(31000);await page.waitForTimeout(100);assert.equal(posts,1);
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();server.kill();}
 });
@@ -216,5 +226,49 @@ test('search and favorites work without recent browser AbortSignal helpers',asyn
   await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
   await page.getByRole('button',{name:'Условия 1раз',exact:true}).waitFor({timeout:5000});
   await page.getByText(/^Обновлено:/).waitFor({timeout:5000});assert.deepEqual(errors,[]);
+ }finally{await browser?.close();server.kill();}
+});
+
+
+test('favorites transfer survives reload and invalid files; hidden and offline pages pause requests',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const directory=mkdtempSync(path.join(tmpdir(),'promospy-transfer-ui-')),base='http://127.0.0.1:3142';
+ const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{env:{...process.env,PORT:'3142',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
+ try {
+  let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
+  browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
+  const context=await browser.newContext({acceptDownloads:true}),page=await context.newPage(),errors:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  const requests:string[]=[];page.on('request',request=>{if(request.url().includes('/api/'))requests.push(request.url());});
+  await page.clock.install({time:new Date()});await page.goto(base+'/company/54');
+  await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).click();await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
+  await page.getByText(/^Обновлено:/).waitFor();await page.getByText('Перенос избранного',{exact:true}).click();
+  const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Скачать файл',exact:true}).click();
+  const download=await downloaded;assert.match(download.suggestedFilename(),/^promospy-favorites-/);
+  const raw=readFileSync((await download.path())!,'utf8'),file={name:'favorites.json',mimeType:'application/json',buffer:Buffer.from(raw)};
+  const contents=JSON.parse(raw);assert.equal(contents.items[0].code,'1раз');assert.equal(contents.items[0].snapshot.status,'found');
+  await page.getByRole('button',{name:'Удалить из избранного 1раз',exact:true}).click();await page.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
+  await page.getByLabel('Файл избранного',{exact:true}).setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{"format":"other"}')});
+  await page.getByRole('alert').filter({hasText:'Неизвестный формат'}).waitFor();assert.equal(await page.locator('article').count(),0);
+  await page.getByLabel('Файл избранного',{exact:true}).setInputFiles(file);await page.getByRole('button',{name:'Условия 1раз',exact:true}).waitFor();
+  await page.getByText('Добавлено кодов: 1. Существующие сохранены.',{exact:true}).waitFor();
+  await page.getByLabel('Файл избранного',{exact:true}).setInputFiles(file);await page.getByText('Все коды уже есть в избранном.',{exact:true}).waitFor();
+  await page.reload();await page.getByRole('button',{name:'Условия 1раз',exact:true}).waitFor();await page.getByText(/^Обновлено:/).waitFor();
+  await page.evaluate(()=>{Reflect.set(window,'promoHidden',false);Object.defineProperty(document,'hidden',{configurable:true,get:()=>Reflect.get(window,'promoHidden')===true});});
+  const hide=()=>page.evaluate(()=>{Reflect.set(window,'promoHidden',true);document.dispatchEvent(new Event('visibilitychange'));});
+  const reveal=()=>page.evaluate(()=>{Reflect.set(window,'promoHidden',false);document.dispatchEvent(new Event('visibilitychange'));});
+  await hide();let before=requests.length;await page.clock.fastForward(90000);await page.waitForTimeout(50);assert.equal(requests.length,before);
+  let resumed=page.waitForResponse(response=>response.url().includes('/api/promocodes/saved?'));await reveal();await resumed;
+  await context.setOffline(true);await page.getByText(/Нет подключения. Сохранённые копии доступны/).waitFor();
+  before=requests.length;await page.clock.fastForward(90000);await page.waitForTimeout(50);assert.equal(requests.length,before);assert.equal(await page.locator('article').count(),1);
+  resumed=page.waitForResponse(response=>response.url().includes('/api/promocodes/saved?'));await context.setOffline(false);await resumed;
+  await page.goto(base+'/company/54');await page.getByRole('button',{name:'Удалить из избранного 1раз',exact:true}).waitFor();
+  await page.evaluate(()=>{Reflect.set(window,'promoHidden',false);Object.defineProperty(document,'hidden',{configurable:true,get:()=>Reflect.get(window,'promoHidden')===true});});
+  await hide();before=requests.length;await page.clock.fastForward(90000);await page.waitForTimeout(50);assert.equal(requests.length,before);
+  resumed=page.waitForResponse(response=>response.url().includes('/api/scan/54'));await reveal();await resumed;
+  await page.emulateMedia({reducedMotion:'reduce'});await page.setViewportSize({width:320,height:740});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  assert.deepEqual(errors,[]);await context.close();
  }finally{await browser?.close();server.kill();}
 });
