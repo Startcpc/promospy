@@ -3,8 +3,9 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import * as http from 'node:http';
 import type { Company } from './companies';
+import { sourceIdentity, validSourceUrl } from './promo-validation';
 import type { PromoCode } from './promocodes';
-import { parsePromoCodesFromHtml } from './promo-parser';
+import { parsePromoCodesFromHtml, mergePromoCodes } from './promo-parser';
 import { parsePublicOfficial, PUBLIC_OFFICIAL_URLS } from './official-search';
 import { extractCouponCards, isChallengePage, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
@@ -29,7 +30,7 @@ function host(value: string) { return new URL(value).hostname.replace(/^www\./, 
 export function safeSource(value: string, domains: string[]): boolean {
   try {
     const u = new URL(value);
-    return u.protocol === 'https:' && !u.username && !u.password && !u.port && !isIP(u.hostname) && domains.includes(host(value));
+    return validSourceUrl(value) && u.protocol === 'https:' && !u.username && !u.password && !u.port && !isIP(u.hostname) && domains.includes(host(value));
   } catch { return false; }
 }
 function privateAddress(address: string) {
@@ -83,20 +84,41 @@ export async function readPublicPage(url: string, domains: string[], signal: Abo
         chunks.push(value);
       }
     } finally { await reader.cancel().catch(() => {}); }
-    return Buffer.concat(chunks).toString('utf8');
+    return decodeSource(Buffer.concat(chunks),response.headers.get('content-type'));
   }
   throw new Error('Слишком много перенаправлений');
 }
+export function decodeSource(data: Uint8Array, contentType: string | null) {
+  const header = contentType?.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1];
+  const start = Buffer.from(data.subarray(0,4096)).toString('latin1');
+  const meta = start.match(/<meta[^>]*charset\s*=\s*["']?([^\s;"'>]+)/i)?.[1]
+    ?? start.match(/<\?xml[^>]*encoding=["']([^"']+)/i)?.[1];
+  try {return new TextDecoder(header ?? meta ?? 'utf-8').decode(data);} catch {return new TextDecoder('utf-8').decode(data);}
+}
 export function parseDiscovery(xml: string, domains: string[]): string[] {
-  const $ = load(xml,{xmlMode:true});
-  return [...new Set($('item > link').map((_,el) => $(el).text().trim()).get().filter(url => safeSource(url,domains)))];
+  const $ = load(xml,{xmlMode:true}), unique = new Map<string,string>();
+  for (const value of $('item > link').map((_,el) => $(el).text().trim()).get()) {
+    if (safeSource(value,domains) && !unique.has(sourceIdentity(value))) {
+      const url = new URL(value); url.hash=''; unique.set(sourceIdentity(value),url.href);
+    }
+  }
+  return [...unique.values()];
 }
 export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now(), official = false): PromoCode[] {
   const scoped = merchantContent(html), $ = load(scoped);
   const ownHost = host(url) === host(company.website);
   if (!official && !ownHost && !matchesMerchant($('h1').first().text() || $('title').text(),company)) return [];
-  const result = parsePromoCodesFromHtml(scoped,url,company.id,now);
-  result.push(...extractCouponCards(scoped,url,company,now,official || ownHost));
+  const structured = parsePromoCodesFromHtml(scoped,url,company.id,now);
+  const cards = extractCouponCards(scoped,url,company,now,official || ownHost).map(card => {
+    const metadata = structured.find(item => item.code === card.code && item.description === card.description);
+    if (!metadata) return card;
+    const expiresAt = card.expiresAt ?? metadata.expiresAt;
+    return {...card,expiresAt,startsAt:card.startsAt ?? metadata.startsAt,minOrder:card.minOrder ?? metadata.minOrder,
+      status:card.status === 'expired' || expiresAt !== undefined && expiresAt <= now ? 'expired' as const : card.status};
+  });
+  // The actual coupon card determines whether the campaign is archived. A JSON
+  // copy may be stale, while a reused code can belong to a new visible campaign.
+  const result = mergePromoCodes([...cards,...structured]);
   return result.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'found',checked:undefined,evidence:undefined,validUntil:undefined,verificationDetails:'Найдено в открытом источнике. Применение не проверялось.'}));
 }
 
@@ -136,7 +158,8 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
     onProgress?.(structuredClone(report));
   };
   const visit = async (url: string, official: boolean, stageSignal: AbortSignal): Promise<string | null> => {
-    if (attempted.has(url)) return null;
+    const identity = sourceIdentity(url);
+    if ([...attempted].some(previous => sourceIdentity(previous) === identity)) return null;
     attempted.add(url);
     try {
       const html = await read(url,official ? officialDomains : domains,stageSignal);
@@ -152,7 +175,10 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
         codes = parsePublicOfficial(company.id,html);
       } catch { codes = parseMerchantPage(html,url,company,Date.now(),official); }
       if (official) codes = codes.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'official',checked:Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение не проверялось.',evidence:{method:'source',observedAt:Date.now(),sourceUrl:url,message:'Официальная публикация'}}));
-      const empty = explicitEmpty(html);
+      const document = load(html);
+      const merchantMatches = matchesMerchant(`${document('title').text()} ${document('h1').text()}`,company);
+      const couponContext = /промокод|купон|coupon/i.test(`${document('title').text()} ${document('h1').text()}`);
+      const empty = couponContext && (official || merchantMatches) && explicitEmpty(merchantContent(html));
       const isIndex = !codes.length && !empty && url.replace(/\/$/,'') === company.website.replace(/\/$/,'');
       const outcome = codes.length ? 'codes' : empty ? 'empty' : isIndex ? 'index' : 'unrecognized';
       report.sourceResults!.push({url,official,outcome,count:codes.length,...(outcome === 'unrecognized' ? {message:'Страница загружена, но разметка промокодов не распознана'} : {})});
@@ -182,20 +208,20 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
   const known = [`https://promokod.pikabu.ru/shops/${slug}`,`https://promokodi.ru/store/${slug}/`,[54,201].includes(company.id) ? `https://getcashback.ru/promocodes/${slug}/` : `https://promokodus.com/campaigns/${slug}`];
   // Known pages start immediately; RSS discovery cannot hold them up.
   const knownJob = Promise.all(known.map(url => visit(url,false,signal)));
-  const discovered = new Set<string>(); let discoveryCursor = 0, discoveryFailures = 0;
+  const discovered = new Map<string,string>(); let discoveryCursor = 0, discoveryFailures = 0;
   await Promise.all(Array.from({length:3},async () => {
     while (discoveryCursor < SEARCH_DOMAINS.length && !signal.aborted) {
       const i = discoveryCursor; discoveryCursor += 5;
       const query = `"${company.name}" промокод (${SEARCH_DOMAINS.slice(i,i+5).map(domain => `site:${domain}`).join(' OR ')})`;
       try {
         const xml = await read(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`,['bing.com'],signal);
-        for (const url of parseDiscovery(xml,SEARCH_DOMAINS)) discovered.add(url);
+        for (const url of parseDiscovery(xml,SEARCH_DOMAINS)) if (!discovered.has(sourceIdentity(url))) discovered.set(sourceIdentity(url),url);
       } catch { discoveryFailures++; }
     }
   }));
   await knownJob;
   if (discoveryFailures) report.warnings.push(`Не получена поисковая выдача для ${discoveryFailures} групп; прямые адреса проверены отдельно.`);
-  const candidates = [...discovered].filter(url => !attempted.has(url)).slice(0,Math.max(0,30-attempted.size));
+  const candidates = [...discovered.values()].filter(url => ![...attempted].some(previous => sourceIdentity(previous) === sourceIdentity(url))).slice(0,Math.max(0,30-attempted.size));
   let cursor = 0;
   await Promise.all(Array.from({length:3},async () => {
     while (cursor < candidates.length && !signal.aborted) await visit(candidates[cursor++],false,signal);

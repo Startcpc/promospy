@@ -8,6 +8,8 @@ import { SavePromoButton } from "@/components/save-promo-button";
 import { useSavedPromos } from "@/hooks/use-saved-promos";
 import { getCompanyById, effectiveStatus, type PromoCode } from "@/lib/promocodes";
 
+import { savedIdBatches } from "@/lib/saved-promos";
+
 type Lookup = { key: string; codes?: PromoCode[]; error?: string; loadedAt?: number };
 export default function SavedPage() {
   const { items, hydrated } = useSavedPromos();
@@ -31,13 +33,20 @@ export default function SavedPage() {
     let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
       try {
-        const response = await fetch(`/api/promocodes/saved?ids=${encodeURIComponent(idsKey)}`, {
-          cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error ?? "Не удалось обновить избранное.");
-        if (!Array.isArray(result.codes)) throw new Error("Не удалось прочитать сохранённые предложения.");
-        if (!controller.signal.aborted) setLookup({ key: requestKey, codes: result.codes, loadedAt: Date.now() });
+        const batches = savedIdBatches(idsKey.split(','));
+        const codes: PromoCode[] = []; let cursor = 0;
+        const signal = AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]);
+        await Promise.all(Array.from({length:Math.min(4,batches.length)},async () => {
+          while (cursor < batches.length) {
+            const batch = batches[cursor++]; signal.throwIfAborted();
+            const response = await fetch(`/api/promocodes/saved?ids=${encodeURIComponent(batch)}`, {cache:'no-store',signal});
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error ?? "Не удалось обновить избранное.");
+            if (!Array.isArray(result.codes)) throw new Error("Не удалось прочитать сохранённые предложения.");
+            codes.push(...result.codes);
+          }
+        }));
+        if (!controller.signal.aborted) setLookup({ key: requestKey, codes, loadedAt: Date.now() });
       } catch (error) {
         if (!controller.signal.aborted) setLookup({ key: requestKey, error: error instanceof Error ? error.message : "Не удалось обновить избранное." });
       } finally {
@@ -51,7 +60,7 @@ export default function SavedPage() {
   const byId = new Map((current?.codes ?? []).map(code => [code.id, code]));
   const filtered = items.filter(item => {
     const offer = byId.get(item.id) ?? item.snapshot;
-    if (activeOnly && (!offer || effectiveStatus(offer, now) === "expired")) return false;
+    if (activeOnly && (!offer || effectiveStatus(offer, now) === "expired" || offer.startsAt !== undefined && offer.startsAt > now)) return false;
     const terms = [item.code, getCompanyById(item.companyId)?.name ?? "", offer?.description ?? "", offer?.discount ?? "", ...(offer?.conditions ?? [])].join(" ").toLocaleLowerCase("ru");
     return query.trim().toLocaleLowerCase("ru").split(/\s+/).every(word => terms.includes(word));
   });

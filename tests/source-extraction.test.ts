@@ -86,3 +86,28 @@ test('full copy value wins over the masked visible suffix in the same card',()=>
  const container=page(offer('<p>Промокод: E99</p><span class="coupon-code">E99</span>').replace('<article>','<article data-code="FULLCODE99">'));
  for(const html of [button,container]) assert.deepEqual(extractCouponCards(html,url,company).map(code=>code.code),['FULLCODE99']);
 });
+test('hidden UI templates are not evidence that the live coupon list is empty',()=>{
+ assert.equal(explicitEmpty(page('<template>Активных промокодов нет</template><div hidden>Промокоды не найдены</div>')) ,false);
+});
+test('ISO end-of-day is accepted only for exact midnight',async()=>{
+ const {parsePromoDate}=await import('../src/lib/promo-parser');
+ assert.equal(parsePromoDate('2026-11-30T24:00:00Z'),Date.parse('2026-12-01T00:00:00Z'));
+ assert.equal(parsePromoDate('2026-11-30T24:01:00Z'),undefined);
+ assert.equal(parsePromoDate('2026-11-30T24:00:00.001Z'),undefined);
+ assert.ok(parsePromoDate('2026-11-30T23:59:59Z'));
+});
+test('cycle 2: archived card is not reactivated by its undated JSON copy',()=>{
+ const metadata='<script type="application/json">'+JSON.stringify([{promoCode:'ENDED99',title:'Скидка 200 рублей на первый заказ'}])+'</script>';
+ const html=page(metadata+'<h2>Купоны уже закончились</h2>'+offer('<code>ENDED99</code>'));
+ const codes=parseMerchantPage(html,url,company);assert.equal(codes.length,1);assert.equal(codes[0].status,'expired');
+});
+test('cycle 2: current card takes precedence over an old JSON campaign using the same code',()=>{
+ const metadata='<script type="application/json">'+JSON.stringify([{promoCode:'REUSED99',title:'Прошлая акция',expiresAt:'2020-01-01'}])+'</script>';
+ const codes=parseMerchantPage(page(metadata+offer('<code>REUSED99</code>')),url,company);
+ assert.equal(codes.length,1);assert.equal(codes[0].status,'found');assert.match(codes[0].description,/первый заказ/);
+});
+test('cycle 2: matching structured expiry remains attached to the same visible offer',()=>{
+ const metadata='<script type="application/json">'+JSON.stringify([{promoCode:'DATED99',title:'Скидка 200 рублей на первый заказ',expiresAt:'2020-01-01'}])+'</script>';
+ const [code]=parseMerchantPage(page(metadata+offer('<code>DATED99</code>')),url,company);
+ assert.equal(code.status,'expired');assert.ok(code.expiresAt);
+});

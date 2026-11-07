@@ -12,7 +12,7 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-web-'));
  const code=parseMerchantPage('<title>ВкусВилл</title><article><h3>Первый заказ</h3><p>Промокод: SAVE10</p></article>','https://promokodi.ru/store/vkusvill',getCompanyById(54)!)[0];
  code.id='54:SAVE10';
- writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:false,outcome:'codes',count:1}]}}));
+ writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{phase:'complete',codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:false,outcome:'codes',count:1}]}}));
  const base='http://127.0.0.1:3127';
  const server=spawn(process.execPath,['scripts/start.mjs'],{env:{...process.env,PORT:'3127',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);
@@ -58,12 +58,34 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   await nativePage.goto(base,{waitUntil:'networkidle'});
   const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),12);
   assert.ok(await logos.evaluateAll(images=>images.every(img=>(img as HTMLImageElement).naturalWidth>0&&getComputedStyle(img).opacity==='1')));await native.close();
-  const blocked=await browser.newContext();await blocked.addInitScript(()=>{Storage.prototype.setItem=()=>{throw Error('storage disabled');};});
+  const blocked=await browser.newContext();await blocked.addInitScript(()=>{const original=Storage.prototype.setItem;Object.defineProperty(window,'restorePromoStorage',{value:()=>{Storage.prototype.setItem=original;}});Storage.prototype.setItem=()=>{throw Error('storage disabled');};});
   const blockedPage=await blocked.newPage();await blockedPage.goto(base+'/company/54',{waitUntil:'networkidle'});
   await blockedPage.getByRole('button',{name:'Сохранить SAVE10',exact:true}).click();
   await blockedPage.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).waitFor();
-  await blockedPage.getByRole('alert').filter({hasText:'до закрытия этой вкладки'}).waitFor();
+  await blockedPage.getByRole('alert').filter({hasText:'до перезагрузки или закрытия этой вкладки'}).waitFor();
   await blockedPage.getByRole('link',{name:'Избранное (1)',exact:true}).click();await blockedPage.waitForURL(base+'/saved');await blockedPage.getByRole('button',{name:'Условия SAVE10',exact:true}).waitFor();
+  await blockedPage.evaluate(()=>Reflect.get(window,'restorePromoStorage')());
+  await blockedPage.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();
+  await blockedPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
+  const secondTab=await blocked.newPage();await secondTab.goto(base);
+  await secondTab.evaluate(()=>{Reflect.get(window,'restorePromoStorage')();localStorage.setItem('promospy:saved-promos:v1',JSON.stringify([{id:'54:SAVE10',companyId:54,code:'SAVE10',savedAt:Date.now()}]));});
+  await blockedPage.getByRole('button',{name:'Условия SAVE10',exact:true}).waitFor();
+  await secondTab.close();
+  // Unicode IDs must not produce an oversized GET URL.
+  const batches=await browser.newContext();
+  await batches.addInitScript(()=>{localStorage.setItem('promospy:saved-promos:v1',JSON.stringify(Array.from({length:100},(_,i)=>({id:`54:A${i}${'Ж'.repeat(55)}`,companyId:54,code:`A${i}${'Ж'.repeat(55)}`,savedAt:Date.now()}))));});
+  const batchPage=await batches.newPage(),lookups:string[]=[];
+  batchPage.on('request',request=>{if(request.url().includes('/api/promocodes/saved?'))lookups.push(request.url());});
+  await batchPage.goto(base+'/saved');
+  await batchPage.getByRole('heading',{name:'Избранное (100)',exact:true}).waitFor();
+  await batchPage.getByRole('button',{name:'Обновить данные',exact:true}).waitFor({state:'visible'});
+  for(let i=0;i<100&&await batchPage.getByRole('button',{name:'Обновить данные',exact:true}).isDisabled();i++)await new Promise(resolve=>setTimeout(resolve,25));
+  assert.ok(lookups.length>1);assert.ok(lookups.every(url=>url.length<2150));assert.equal(await batchPage.locator('article').count(),100);
+  await batches.close();
+  await page.goto(base+'/company/unknown');
+  await page.getByRole('heading',{name:'Страница не найдена',exact:true}).waitFor();
+  assert.equal(await page.locator('meta[name="robots"][content="noindex"]').count()>0,true);
+  assert.equal((await fetch(base+'/api/scan/54',{method:'POST',headers:{Origin:'https://unrelated.example'}})).status,403);
   await blocked.close();await context.close();
  }finally{await browser?.close();server.kill();}
 });
@@ -101,5 +123,30 @@ test('empty cache -> automatic search -> official cards; refresh fetches sources
   assert.equal(await page.getByText('В прочитанных источниках открытые промокоды не найдены.',{exact:true}).count(),0);
   await page.getByRole('button',{name:'Условия 1раз',exact:true}).click();
   await page.getByRole('link',{name:'vkusvill.ru',exact:true}).waitFor();
+ } finally {await browser?.close();server.kill();}
+});
+
+test('cycle 3: clipboard feedback follows the latest click and its timer restarts',async()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'promospy-copy-ui-')),base='http://127.0.0.1:3139';
+ const server=spawn(process.execPath,['--import',path.resolve('tests/helpers/official-network.mjs'),'scripts/start.mjs'],{env:{...process.env,PORT:'3139',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
+ let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
+ try {
+  let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
+  browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
+  const page=await browser.newPage();await page.goto(base+'/company/54');
+  const copy=page.getByRole('button',{name:'Скопировать 1раз',exact:true});await copy.waitFor();
+  await page.evaluate(()=>{
+   let calls=0;
+   Object.defineProperty(navigator,'clipboard',{value:{writeText:()=>{
+    if(++calls===1)return new Promise((_resolve,reject)=>Reflect.set(window,'rejectOldCopy',()=>reject(Error('old permission failure'))));
+    return Promise.resolve();
+   }}});
+  });
+  await copy.click();await copy.click();await page.getByText('Код скопирован',{exact:true}).waitFor();
+  await page.evaluate(()=>Reflect.get(window,'rejectOldCopy')());
+  await page.waitForTimeout(50);assert.equal(await page.getByText('Не удалось скопировать. Выделите код вручную.',{exact:true}).count(),0);
+  await page.waitForTimeout(1300);await copy.click();await page.waitForTimeout(1000);
+  assert.equal(await page.getByText('Код скопирован',{exact:true}).isVisible(),true);
+  await page.getByText('Код скопирован',{exact:true}).waitFor({state:'hidden'});
  } finally {await browser?.close();server.kill();}
 });

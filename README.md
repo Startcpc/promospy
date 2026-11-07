@@ -7,10 +7,10 @@
 Скачайте ZIP и распакуйте папку. В VS Code откройте терминал и выполните:
 
 ```sh
-python start.py
+python3 start.py
 ```
 
-Нужен Python 3.9+; на macOS/Linux команда может называться python3. На Windows можно открыть START_WINDOWS.cmd. Если Node.js ещё нет, переносимая версия автоматически загрузится с nodejs.org в .runtime с проверкой SHA-256. Зависимости установятся, сайт соберётся, браузер откроется на http://localhost:3000. Администратор, Git, GitHub, Codespaces и API-ключи не нужны. Первый запуск требует интернет для подготовки; следующие используют готовые файлы. Остановка — Ctrl+C. Подробности: [START_HERE.md](START_HERE.md).
+Нужен Python 3.9+. На Windows используйте `python start.py` или START_WINDOWS.cmd. Если Node.js ещё нет, переносимая версия автоматически загрузится с nodejs.org в .runtime с проверкой SHA-256. Зависимости установятся, сайт соберётся, браузер откроется на http://localhost:3000. Администратор, Git, GitHub, Codespaces и API-ключи не нужны. Первый запуск требует интернет для подготовки; следующие используют готовые файлы. Остановка — Ctrl+C. Подробности: [START_HERE.md](START_HERE.md).
 
 Если Node.js 22.18+ и pnpm 11 уже есть: `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm start`. Для разработки — `pnpm dev` либо `python start.py --dev`. Эти же команды работают в Codespaces: открыть порт 3000 в Ports. Репозиторий используется только для получения обновлений, не во время работы сайта.
 
@@ -33,6 +33,8 @@ python start.py
 ```sh
 pnpm test
 pnpm test:search
+pnpm test:database
+pnpm test:launcher # на Windows: python -m unittest discover -s tests -p test_launcher.py
 pnpm typecheck
 pnpm lint
 pnpm build
@@ -48,4 +50,4 @@ Production: `pnpm build`, затем `pnpm start`. Задайте абсолют
 
 Неиспользуемые шаблоны, старые сборщики, UI-библиотеки и лишние изображения удалены. Исходная SQLite сохранена без изменений как исторический снимок. Актуальное задание следующему агенту — [NEXT_AGENT_TASK.md](NEXT_AGENT_TASK.md).
 
-Для живой диагностики: `pnpm test:live 54 201`. Эта команда не использует фикстуры и завершится с ошибкой при отсутствии найденных кодов. Подробности исправлений и границы проверок — [docs/release-0.8.1.md](docs/release-0.8.1.md).
+Для живой диагностики: `pnpm test:live 54 201`. Эта команда не использует фикстуры и завершится с ошибкой при отсутствии найденных кодов. Подробности исправлений и границы проверок — [docs/release-0.8.2.md](docs/release-0.8.2.md).

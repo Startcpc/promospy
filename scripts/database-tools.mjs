@@ -2,11 +2,13 @@ import { DatabaseSync, backup } from "node:sqlite";
 import { mkdir, rename, rm, chmod, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+const root = fileURLToPath(new URL("../", import.meta.url));
 import { randomUUID } from "node:crypto";
 
-export function databasePath(url = process.env.DATABASE_URL) {
+export function databasePath(url = process.env.DATABASE_URL ?? "file:../db/custom.db") {
   if (!url?.startsWith("file:") || !url.slice(5) || /[?#]/.test(url)) throw new Error("DATABASE_URL должен указывать на локальный SQLite-файл");
-  return path.isAbsolute(url.slice(5)) ? url.slice(5) : path.resolve("prisma", url.slice(5));
+  return path.isAbsolute(url.slice(5)) ? url.slice(5) : path.resolve(root, "prisma", url.slice(5));
 }
 export function checkDatabase(filename) {
   const database = new DatabaseSync(filename, { readOnly: true });

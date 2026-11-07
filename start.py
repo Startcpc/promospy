@@ -17,6 +17,7 @@ import time
 import urllib.request
 import webbrowser
 import zipfile
+import uuid
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT / '.runtime'
@@ -43,12 +44,16 @@ def system_node():
     if not candidate:
         return None
     try:
-        version = subprocess.check_output([candidate, '--version'], text=True).strip()
+        version = subprocess.check_output([candidate, '--version'], text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
         if tuple(map(int, version.lstrip('v').split('.')[:2])) < (22, 18):
             return None
-        node = Path(subprocess.check_output([candidate, '-p', 'process.execPath'], text=True).strip()).resolve()
-        return node if npm_cli(node) else None
-    except (OSError, ValueError, subprocess.CalledProcessError):
+        node = Path(subprocess.check_output([candidate, '-p', 'process.execPath'], text=True, stderr=subprocess.DEVNULL, timeout=10).strip()).resolve()
+        cli = npm_cli(node)
+        if not cli:
+            return None
+        subprocess.check_output([str(node), str(cli), '--version'], stderr=subprocess.DEVNULL, timeout=10)
+        return node
+    except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
 
@@ -81,7 +86,11 @@ def portable_node():
     print('Загружаем переносимый Node.js с nodejs.org. Установка в систему не нужна.', flush=True)
     try:
         download(base + 'SHASUMS256.txt', checksums)
-        expected = dict(line.split(None, 1)[::-1] for line in checksums.read_text().splitlines() if line.strip())
+        expected = {}
+        for line in checksums.read_text(encoding='utf-8').splitlines():
+            parts = line.split()
+            if len(parts) == 2 and len(parts[0]) == 64 and all(c in '0123456789abcdefABCDEF' for c in parts[0]):
+                expected[parts[1].lstrip('*')] = parts[0].lower()
         checksum = expected.get(archive.name)
         if not checksum:
             raise RuntimeError('Официальная контрольная сумма архива не найдена.')
@@ -136,6 +145,59 @@ def fingerprint(files):
     return digest.hexdigest()
 
 
+def load_state(filename):
+    try:
+        value = json.loads(filename.read_text(encoding='utf-8'))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(filename, state):
+    temporary = filename.with_name(filename.name + '.' + uuid.uuid4().hex + '.tmp')
+    try:
+        temporary.write_text(json.dumps(state), encoding='utf-8')
+        temporary.replace(filename)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def prepare_runtime(node, dev):
+    node = node or portable_node()
+    env = os.environ.copy()
+    env['PATH'] = str(node.parent) + os.pathsep + env.get('PATH', '')
+    env['npm_config_cache'] = str(RUNTIME / 'npm-cache')
+    env['PNPM_HOME'] = str(RUNTIME / 'pnpm')
+    env['XDG_CACHE_HOME'] = str(RUNTIME / 'cache')
+    env['XDG_STATE_HOME'] = str(RUNTIME / 'state')
+    pm = [node, npm_cli(node), 'exec', '--yes', f'--package=pnpm@{PNPM_VERSION}', '--', 'pnpm']
+    RUNTIME.mkdir(exist_ok=True)
+    state_path = RUNTIME / 'state.json'
+    state = load_state(state_path)
+    node_version = subprocess.check_output([str(node), '--version'], text=True).strip().split('.')[0]
+    target_platform = f'{platform.system()}-{platform.machine().lower()}-{node_version}'
+    project_path = str(ROOT.resolve())
+    platform_changed = bool(state) and (state.get('platform') != target_platform or state.get('projectRoot') != project_path)
+    if state.get('platform') != target_platform or state.get('projectRoot') != project_path:
+        state = {'platform': target_platform, 'projectRoot': project_path}
+    dependencies = fingerprint([ROOT / name for name in ('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc')])
+    if state.get('dependencies') != dependencies or not (ROOT / 'node_modules/next/package.json').exists():
+        print('Подготавливаем зависимости. При повторном запуске этот шаг пропускается.', flush=True)
+        run(pm + ['install', '--frozen-lockfile', '--store-dir', str(ROOT / '.pnpm-store')] + (['--force'] if platform_changed else []), env)
+        state['dependencies'] = dependencies
+        state.pop('build', None)
+        save_state(state_path,state)
+    sources = [file for folder in ('src', 'public', 'scripts') for file in (ROOT / folder).rglob('*') if file.is_file()]
+    sources += [ROOT / name for name in ('package.json', 'pnpm-lock.yaml', 'next.config.ts', 'tsconfig.json', 'postcss.config.mjs')]
+    build = fingerprint(sources)
+    if not dev and (state.get('build') != build or not (ROOT / '.next/standalone/server.js').exists()):
+        print('Собираем сайт. Следующий запуск будет быстрее.', flush=True)
+        run(pm + ['run', 'build'], env)
+        state['build'] = build
+        save_state(state_path,state)
+    return node, env
+
+
 def main():
     parser = argparse.ArgumentParser(description='Локальный запуск PromoSpy без GitHub.')
     parser.add_argument('--check', action='store_true', help='проверить окружение без установки')
@@ -150,37 +212,20 @@ def main():
         return
     if not 1 <= args.port <= 65535:
         parser.error('Порт должен быть от 1 до 65535.')
-    node = node or portable_node()
-    env = os.environ.copy()
-    env['PATH'] = str(node.parent) + os.pathsep + env.get('PATH', '')
-    env['npm_config_cache'] = str(RUNTIME / 'npm-cache')
-    pm = [node, npm_cli(node), 'exec', '--yes', f'--package=pnpm@{PNPM_VERSION}', '--', 'pnpm']
-    RUNTIME.mkdir(exist_ok=True)
-    state_path = RUNTIME / 'state.json'
-    try:
-        state = json.loads(state_path.read_text())
-    except (OSError, ValueError):
-        state = {}
-    dependencies = fingerprint([ROOT / 'package.json', ROOT / 'pnpm-lock.yaml'])
-    if state.get('dependencies') != dependencies or not (ROOT / 'node_modules/next/package.json').exists():
-        print('Подготавливаем зависимости. При повторном запуске этот шаг пропускается.', flush=True)
-        run(pm + ['install', '--frozen-lockfile'], env)
-        state['dependencies'] = dependencies
-        state_path.write_text(json.dumps(state))
-    sources = [file for folder in ('src', 'public', 'scripts') for file in (ROOT / folder).rglob('*') if file.is_file()]
-    sources += [ROOT / name for name in ('package.json', 'pnpm-lock.yaml', 'next.config.ts', 'tsconfig.json', 'postcss.config.mjs')]
-    build = fingerprint(sources)
-    if not args.dev and (state.get('build') != build or not (ROOT / '.next/standalone/server.js').exists()):
-        print('Собираем сайт. Следующий запуск будет быстрее.', flush=True)
-        run(pm + ['run', 'build'], env)
-        state['build'] = build
-        state_path.write_text(json.dumps(state))
     port = args.port
-    with socket.socket() as probe:
+    # Reserve the port before installing/building: a second launch must not
+    # overwrite the files used by an already running server.
+    with socket.socket() as reservation:
         try:
-            probe.bind(('127.0.0.1', port))
+            if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+                reservation.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            else:
+                reservation.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            reservation.bind(('127.0.0.1', port))
+            reservation.listen(1)
         except OSError:
-            raise RuntimeError(f'Порт {port} занят. Остановите другой сервер или запустите: python start.py --port 3001')
+            raise RuntimeError(f'Порт {port} занят. Остановите другой сервер или запустите: python3 start.py --port 3001')
+        node, env = prepare_runtime(node,args.dev)
     env.update(PORT=str(port), HOSTNAME='127.0.0.1')
     url = f'http://localhost:{port}'
     command = [node, ROOT / 'node_modules/next/dist/bin/next', 'dev', '--webpack', '-p', str(port)] if args.dev else [node, ROOT / 'scripts/start.mjs']

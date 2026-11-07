@@ -87,3 +87,20 @@ test('28: proxy routing respects NO_PROXY without resolving proxy-only destinati
  assert.equal(routedThroughProxy(url,{HTTPS_PROXY:'http://proxy:8080',NO_PROXY:'other.test'}),true);
  assert.equal(routedThroughProxy(url,{}),false);
 });
+test('29: discovery deduplicates fragments and tracking aliases before spending source slots',()=>{
+ const xml='<rss><channel><item><link>https://promokodi.ru/store/vkusvill/?utm_source=one#top</link></item><item><link>https://www.promokodi.ru/store/vkusvill?utm_source=two</link></item></channel></rss>';
+ assert.equal(parseDiscovery(xml,['promokodi.ru']).length,1);
+});
+test('30: oversized source URLs are rejected before fetch or persistence',()=>assert.equal(safeSource(url+'?q='+'a'.repeat(2100),['promokodi.ru']),false));
+test('31: source charset is decoded instead of corrupting Cyrillic coupon text',async()=>{
+ const {decodeSource}=await import('../src/lib/web-search');
+ const text=Uint8Array.from([0xc2,0xea,0xf3,0xf1,0xc2,0xe8,0xeb,0xeb]);
+ assert.equal(decodeSource(text,'text/html; charset=windows-1251'),'ВкусВилл');
+ assert.equal(decodeSource(Buffer.concat([Buffer.from('<meta charset="windows-1251">'),text]),null),'<meta charset="windows-1251">ВкусВилл');
+ assert.equal(decodeSource(Buffer.from('1раз'),'text/html; charset=unknown'),'1раз');
+});
+test('32: an empty message on another merchant page cannot clear this merchant source',async()=>{
+ const report=await searchMerchant(company,new AbortController().signal,async target=>target.includes('bing.com')?'<rss/>':'<title>Промокоды Ozon</title><h1>Промокоды Ozon</h1><p>Активных промокодов нет</p>');
+ const thirdParty=report.sourceResults!.filter(source=>!source.official);
+ assert.ok(thirdParty.every(source=>source.outcome==='unrecognized'));
+});

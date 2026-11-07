@@ -34,3 +34,13 @@ test("online snapshot includes committed WAL, restores data, retains unrelated f
     checkDatabase(source);
   } finally { if (database.isOpen) database.close(); await rm(folder, { recursive: true, force: true }); }
 });
+
+test('relative SQLite paths stay anchored to the project when launched from another directory',async()=>{
+ const {databasePath}=await import('../scripts/database-tools.mjs');
+ const {fileURLToPath}=await import('node:url');
+ const previous=process.cwd();
+ try {
+  process.chdir(tmpdir());
+  assert.equal(databasePath('file:../db/custom.db'),fileURLToPath(new URL('../db/custom.db',import.meta.url)));
+ }finally{process.chdir(previous);}
+});

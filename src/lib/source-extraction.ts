@@ -24,7 +24,7 @@ export function isChallengePage(html: string) {
   return body.length < 1800 && /(?:подтвердите|проверьте|confirm|verify).{0,60}(?:не бот|не робот|not a robot|human)|checking your browser|enable javascript and cookies to continue/i.test(body);
 }
 export function explicitEmpty(html: string) {
-  const $ = load(html); $('script,style,noscript').remove();
+  const $ = load(html); $('script,style,noscript,template,[hidden],[aria-hidden="true"],[style*="display:none"],[style*="display: none"]').remove();
   return /(?:активных|действующих|доступных)\s+(?:промокодов|купонов)\s+(?:пока\s+)?нет|промокоды\s+не\s+найдены/i.test($('main').length ? $('main').text() : $('body').text());
 }
 export function merchantContent(html: string) {

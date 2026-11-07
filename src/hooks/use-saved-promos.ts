@@ -44,12 +44,12 @@ export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId"
     if (validated.length !== next.length) return "Список слишком большой. Удалите несколько кодов.";
     const raw = JSON.stringify(validated);
     window.localStorage.setItem(SAVED_PROMOS_KEY, raw);
-    cachedRaw = raw; cached = validated;
+    cachedRaw = raw; cached = validated; memoryOnly = false;
     window.dispatchEvent(new Event(CHANGED_EVENT));
     return null;
   } catch {
     cached = parseSavedPromos(JSON.stringify(next)); memoryOnly = true;
     window.dispatchEvent(new Event(CHANGED_EVENT));
-    return "Браузер запретил постоянное хранение. Избранное доступно только до закрытия этой вкладки.";
+    return "Браузер запретил постоянное хранение. Избранное доступно только до перезагрузки или закрытия этой вкладки.";
   }
 }

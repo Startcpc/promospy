@@ -43,6 +43,9 @@ export function parsePromoDate(value: unknown, endOfDay = false): number | undef
     date += endOfDay ? "T23:59:59.999+03:00" : "T00:00:00+03:00";
   }
   if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(date)) return undefined;
+  const clock = date.match(/T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:Z|[+-]\d{2}:?\d{2})$/i);
+  if (!clock || Number(clock[1]) > 24 || Number(clock[2]) > 59 || Number(clock[3] ?? 0) > 59) return undefined;
+  if (Number(clock[1]) === 24 && (Number(clock[2]) !== 0 || Number(clock[3] ?? 0) !== 0 || /[1-9]/.test(clock[4] ?? ''))) return undefined;
   const calendar = date.slice(0, 10);
   const validation = new Date(`${calendar}T00:00:00Z`);
   if (!Number.isFinite(validation.getTime()) || validation.toISOString().slice(0, 10) !== calendar) return undefined;

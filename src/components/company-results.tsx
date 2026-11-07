@@ -52,7 +52,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
   }, [company, id]);
   const refresh = () => { void requestRef.current?.(true); };
   if (!company) return <main className="p-8"><p>Компания не найдена</p><Link href="/">На главную</Link></main>;
-  const busy = starting || state?.status === "running" || state?.status === "queued";
+  const busy = !error && (starting || state?.status === "running" || state?.status === "queued");
   const codes = visiblePromoCodes(state?.codes ?? [], now).filter((code) => matchesPromoQuery(code, query) && (!onlyVerified || effectiveStatus(code, now) !== "expired" && (code.startsAt === undefined || code.startsAt <= now)));
   return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
     <nav aria-label="Навигация" className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -73,7 +73,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
         <p className="text-lg font-bold">{state.status === "queued" ? "Поиск начнётся автоматически…" : busy ? state.report?.phase === "sources" ? "Ищем на других сайтах…" : "Проверяем официальный сайт…" : "Промокоды"}</p>
         <button onClick={refresh} disabled={busy || refreshing} className="retro-button inline-flex items-center gap-2 border-2 border-[#16213e] bg-[#ff6b24] px-4 py-2 font-bold text-[#16213e] disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />{busy || refreshing ? "Обновляем…" : "Обновить"}</button>
       </div>
-      {error && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
+      {error && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
       {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
       {state?.report && <p className="mt-3 text-base">Прочитано страниц: {state.report.pagesRead}.</p>}
       {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
@@ -95,7 +95,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
     </div>
     {!state && !error ? <p className="py-10 text-center text-muted-foreground">Загружаем результаты…</p>
       : codes.length ? <div className="grid gap-4 sm:grid-cols-2">{codes.map((code) => <PromoCard key={code.id} code={code} />)}</div>
-        : <p role="status" className="py-10 text-center text-muted-foreground">{busy ? "Найденные коды появятся здесь автоматически." : state.status === "failed" ? state.notice : query || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p>}
+        : <p role="status" className="py-10 text-center text-muted-foreground">{busy ? "Найденные коды появятся здесь автоматически." : error ? "Не удалось загрузить результаты. Повторяем запрос." : state.status === "failed" ? state.notice : query || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p>}
     <details className="mt-8 border-t pt-4"><summary className="cursor-pointer text-base font-bold">О компании</summary><p className="mt-3 text-base text-muted-foreground">{company.description}</p></details>
   </main>;
 }

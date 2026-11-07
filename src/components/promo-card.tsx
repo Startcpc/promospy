@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, useRef } from "react";
 import { Copy, Check, ExternalLink, ChevronDown } from "lucide-react";
 import { SavePromoButton } from "./save-promo-button";
 import { effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
@@ -13,19 +13,29 @@ export function PromoCard({ code }: { code: PromoCode }) {
   const [copyError, setCopyError] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(timer);
-  }, [copied]);
+  const copyAttempt = useRef(0);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    copyAttempt.current++;
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
   const status = effectiveStatus(code);
   const colors = {
     found: "bg-slate-100 text-slate-700", official: "bg-emerald-100 text-emerald-800", verified: "bg-green-100 text-green-800", rejected: "bg-orange-100 text-orange-800",
     expired: "bg-gray-100 text-gray-600", unavailable: "bg-amber-100 text-amber-800",
   };
   const copy = async () => {
-    try { setCopied(false); await navigator.clipboard.writeText(code.code); setCopied(true); setCopyError(false); }
-    catch { setCopyError(true); }
+    const attempt = ++copyAttempt.current;
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    setCopied(false); setCopyError(false);
+    try {
+      await navigator.clipboard.writeText(code.code);
+      if (attempt !== copyAttempt.current) return;
+      setCopied(true);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      if (attempt === copyAttempt.current) setCopyError(true);
+    }
   };
   return <article className="promo-card self-start rounded-lg border-2 border-[#16213e] bg-white p-4 text-[#11254b] shadow-[0_3px_15px_-10px_rgba(29,78,216,0.12)]">
     <div className="flex items-start gap-2">
@@ -49,10 +59,10 @@ export function PromoCard({ code }: { code: PromoCode }) {
     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
       {code.minOrder !== undefined && <p>Минимальный заказ: {code.minOrder} ₽</p>}
       {code.startsAt !== undefined && code.startsAt > Date.now() && <p>Акция ещё не началась.</p>}
-      {code.startsAt && <p>Начало: {formatPromoDate(code.startsAt)} МСК</p>}
+      {code.startsAt !== undefined && <p>Начало: {formatPromoDate(code.startsAt)} МСК</p>}
       <p>{code.expiresAt ? `Срок по источнику: до ${formatPromoDate(code.expiresAt)} МСК` : "Срок действия в источнике не указан"}</p>
       {code.conditions.map((condition, index) => <p key={index}>{condition}</p>)}
-      {code.checked && <p>{code.evidence?.method === "source" ? "Проверка официального источника" : "Попытка проверки"}: {formatPromoDate(code.checked)} МСК</p>}
+      {code.checked !== undefined && <p>{code.evidence?.method === "source" ? "Проверка официального источника" : "Попытка проверки"}: {formatPromoDate(code.checked)} МСК</p>}
       {code.verificationDetails && <p>{code.verificationDetails}</p>}
       {status === "found" && code.checked && <p>Актуальность сейчас не подтверждена.</p>}
       {status === "found" && code.evidence?.method === "source" && <p>Код ранее публиковался на официальном сайте. Свежего подтверждения публикации нет; это не означает, что код недействителен.</p>}
