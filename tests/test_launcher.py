@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 from pathlib import Path
 import socket
@@ -13,6 +14,17 @@ spec.loader.exec_module(launcher)
 
 
 class LauncherTests(unittest.TestCase):
+    def test_windows_redirected_console_can_print_russian_messages(self):
+        output, errors = io.BytesIO(), io.BytesIO()
+        stdout = io.TextIOWrapper(output, encoding='cp1252')
+        stderr = io.TextIOWrapper(errors, encoding='cp1252')
+        with patch.object(launcher.platform, 'system', return_value='Windows'), patch('sys.stdout', stdout), patch('sys.stderr', stderr):
+            launcher.configure_console()
+            print('Подготавливаем зависимости', flush=True)
+            print('Ошибка загрузки', file=launcher.sys.stderr, flush=True)
+        self.assertIn('Подготавливаем зависимости', output.getvalue().decode('utf-8'))
+        self.assertIn('Ошибка загрузки', errors.getvalue().decode('utf-8'))
+
     def test_corrupt_or_non_object_state_recovers_without_a_traceback(self):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / 'state.json'

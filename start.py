@@ -25,6 +25,20 @@ NODE_VERSION = '22.23.4'
 PNPM_VERSION = '11.25.0'
 
 
+def configure_console():
+    # Redirected Windows output can default to cp1252, which cannot print the
+    # launcher's Russian messages. Console handles support Unicode directly.
+    if platform.system() == 'Windows':
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding='utf-8', errors='backslashreplace')
+            except (AttributeError, OSError, ValueError):
+                pass
+
+
+configure_console()
+
+
 def run(command, env):
     subprocess.run([str(part) for part in command], cwd=ROOT, env=env, check=True)
 
