@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { PromoCode } from "@/lib/promocodes";
-import { MAX_SAVED_PROMOS, parseSavedPromos, importSavedPromos, SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
+import { MAX_SAVED_PROMOS, parseSavedPromos, importSavedPromos, savedOfferMatches, SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
 
 const CHANGED_EVENT = "promospy:saved-promos-changed";
 const EMPTY: SavedPromo[] = [];
@@ -34,11 +34,11 @@ export function useSavedPromos() {
 }
 export function setPromoSaved(offer: Pick<PromoCode, "id" | "code" | "companyId"> & Partial<PromoCode>, save: boolean): string | null {
   const current = snapshot();
-  const existing = current.some(item => item.id === offer.id);
+  const existing = current.some(item => savedOfferMatches(item,offer));
   if (existing === save) return null;
   if (save && current.length >= MAX_SAVED_PROMOS) return `Можно сохранить до ${MAX_SAVED_PROMOS} кодов. Удалите ненужный код и попробуйте снова.`;
   const next = save ? [{ id: offer.id, companyId: offer.companyId, code: offer.code, savedAt: Date.now(), snapshot: offer }, ...current]
-    : current.filter(item => item.id !== offer.id);
+    : current.filter(item => !savedOfferMatches(item,offer));
   return storeSavedPromos(next);
 }
 function storeSavedPromos(next: unknown[]): string | null {

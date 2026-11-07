@@ -2,9 +2,13 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { load } = require("cheerio") as typeof import("cheerio");
 import { codeKey, getCompanyById, type PromoCode } from "./promocodes";
+import { mergeOffers } from "./offer-identity";
+import { merchantAliases } from "./merchant-aliases";
+import { foreignMerchantHeading, explicitCode, validCouponToken } from "./promo-quality";
 
 type RecordValue = Record<string, unknown>;
-const CODE_FIELDS = ["promoCode", "promocode", "couponCode", "coupon_code", "promo_code"];
+export type ParseDiagnostics={incomplete:boolean;reasons:string[];rejectedCodes?:string[]};
+const CODE_FIELDS = ["promoCode", "promocode", "couponCode", "coupon_code", "promo_code", "discountCode", "promotionCode", "redeemCode"];
 const MAX_RECORDS = 1000;
 function field(record: RecordValue, keys: string[]): string | undefined {
   for (const key of keys) {
@@ -28,6 +32,14 @@ export function parsePromoDate(value: unknown, endOfDay = false): number | undef
   }
   if (typeof value !== "string") return undefined;
   let date = value.trim();
+  const englishMonths=['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const dayFirst=date.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(\d{4})$/i);
+  const monthFirst=date.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i);
+  if(dayFirst||monthFirst){
+    const name=(dayFirst?.[2]??monthFirst![1]).toLowerCase(),month=englishMonths.findIndex(item=>item===name||item.slice(0,3)===name);
+    if(month<0)return undefined;
+    date=String((dayFirst??monthFirst)![3])+'-'+String(month+1).padStart(2,'0')+'-'+String(dayFirst?.[1]??monthFirst![2]).padStart(2,'0');
+  }
   const months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
   const written = date.toLocaleLowerCase("ru").match(/^(\d{1,2})\s+([а-яё]+)\s+(\d{4})(?:\s*г(?:ода|\.)?)?$/);
   if (written) {
@@ -55,33 +67,36 @@ export function parsePromoDate(value: unknown, endOfDay = false): number | undef
 function cleanText(value: string) {
   return load(`<div>${value}</div>`)("div").text().replace(/\s+/g, " ").trim().slice(0, 1500);
 }
-function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string, now: number): PromoCode | undefined {
+function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string, now: number, requireMerchant = false, diagnostics?:ParseDiagnostics): PromoCode | undefined {
   const company = getCompanyById(companyId);
-  const nestedShop = record.shop && typeof record.shop === "object" ? record.shop as RecordValue : undefined;
+  const shop=record.shop??record.seller??record.merchant;
+  const nestedShop = shop && typeof shop === "object" ? shop as RecordValue : undefined;
   const merchant = field(record, ["merchantName", "shopName", "storeName", "companyName"]) ?? (nestedShop ? field(nestedShop, ["title", "name"]) : undefined);
+  if (requireMerchant && !merchant) return;
   if (merchant && company) {
     const normalized = merchant.toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]/gu, "");
-    const aliases = [company.name, ...company.keywords].map((name) => name.toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]/gu, ""));
+    const aliases = [company.name, ...merchantAliases[companyId]??[]].map((name) => name.toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]/gu, ""));
     if (!aliases.includes(normalized)) return;
   }
-  const rawCode = field(record, CODE_FIELDS);
+  const rawCode = field(record, CODE_FIELDS) ?? (record["@type"] === "Offer" && typeof record.description === "string" ? explicitCode(record.description) : undefined);
   if (!rawCode) return;
   const code = codeKey(rawCode);
-  if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(code)) return;
+  if (!validCouponToken(code)) return;
   const description = cleanText(field(record, ["title", "description", "name"]) ?? `Промокод ${code}`);
+  if (company && foreignMerchantHeading(description,companyId)) return;
   // Some aggregators attach sibling restaurants to the parent shop even in structured metadata.
   // Keep these source-specific exclusions explicit instead of asking an LLM to guess validity.
   if (companyId === 301 && /(?:твоя\s+пицца|(?:^|[^а-яё])[её]рш(?:$|[^а-яё]))/i.test(description)) return;
   const rawConditions = record.conditions ?? record.terms;
   const conditions = (Array.isArray(rawConditions) ? rawConditions : typeof rawConditions === "string" ? [rawConditions] : [])
-    .filter((v): v is string => typeof v === "string").map(cleanText).filter(Boolean);
+    .filter((v): v is string => typeof v === "string").slice(0,20).map(cleanText).filter(Boolean);
   const details = field(record, ["description"]);
   if (details && cleanText(details) !== description) conditions.push(cleanText(details));
   if (record.forFirstPurchase === true && record.forRepeatPurchase === false) conditions.push("Только первый заказ");
   if (record.forRepeatPurchase === true && record.forFirstPurchase === false) conditions.push("Только повторный заказ");
   const percent = field(record, ["discountPercent", "discount_percent"]);
   const amount = field(record, ["discountAmount", "discount_amount"]);
-  const discount = percent && Number(percent) > 0 ? `−${percent}%`
+  const discount = percent && Number(percent.replace(",", ".")) > 0 ? `−${percent}%`
     : amount && Number(amount) > 0 ? `${amount} ₽`
       : description.match(/\d+\s*%/)?.[0] ?? "По условиям акции";
   const conditionText = [description, ...conditions].join(" ");
@@ -91,24 +106,38 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
   const rawStart = field(record, ["startsAt", "startDate", "validFrom"]);
   const expiresAt = parsePromoDate(rawEnd, true), startsAt = parsePromoDate(rawStart);
   if (rawEnd !== undefined && expiresAt === undefined || rawStart !== undefined && startsAt === undefined
-    || startsAt !== undefined && expiresAt !== undefined && startsAt > expiresAt) return;
+    || startsAt !== undefined && expiresAt !== undefined && startsAt > expiresAt) {
+    if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(code);if(diagnostics.reasons.length<5)diagnostics.reasons.push('Неоднозначные или некорректные даты в записи промокода');}
+    return;
+  }
   return {
     id: `${companyId}:${code}`, companyId, code, description, discount,
-    status: expiresAt !== undefined && expiresAt <= now ? "expired" : "found",
+    status: record.expired === true || /^(?:expired|ended|finished)$/i.test(field(record,["status","state"])??"") || expiresAt !== undefined && expiresAt <= now ? "expired" : "found",
     sources: [{ url: sourceUrl, name: new URL(sourceUrl).hostname, seenAt: now }],
+    extraction: {method:"structured",text:[code,description,...conditions].join("\n").slice(0,3000)},
+    appOnly: /(?:только|лишь|исключительно)\s+(?:в\s+)?(?:мобильном\s+)?приложении|app[- ]only/i.test(conditionText) || undefined,
+    channel: /(?:только|лишь)\s+(?:в\s+)?(?:мобильном\s+)?приложении|app[- ]only/i.test(conditionText)?"app":/(?:только|лишь)\s+(?:в\s+)?магазин[а-яё]*|in[- ]store only/i.test(conditionText)?"in-store":/только\s+на\s+сайте|online only/i.test(conditionText)?"online":undefined,
+    regions: Array.isArray(record.regions)?record.regions.filter((value):value is string=>typeof value==="string").slice(0,20).map(value=>cleanText(value).slice(0,200)):undefined,
+    categories: Array.isArray(record.eligibleCategories)?record.eligibleCategories.filter((value):value is string=>typeof value==="string").slice(0,20).map(value=>cleanText(value).slice(0,200)):undefined,
+    maxDiscount: (()=>{const value=field(record,["maxDiscount","maximumDiscount"])??conditionText.match(/максимальн[а-яё]*\s+скидк[а-яё]*\s*[:—-]?\s*(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб)/i)?.[1];return value?parseMoney(value):undefined;})(),
     found: now, conditions, minOrder: minimum ? parseMoney(minimum) : undefined, startsAt, expiresAt,
   };
 }
 /** Parse complete objects, never a character window containing adjacent offers. */
-export function parsePromoCodesFromHtml(html: string, sourceUrl: string, companyId = 0, now = Date.now()): PromoCode[] {
+export function parsePromoCodesFromHtml(html: string, sourceUrl: string, companyId = 0, now = Date.now(), options: {requireMerchant?:boolean;diagnostics?:ParseDiagnostics} = {}): PromoCode[] {
   const $ = load(html);
   const records: RecordValue[] = [];
-  const visit = (value: unknown, depth = 0) => {
+  const visit = (value: unknown, depth = 0, inheritedMerchant?: string) => {
     if (depth > 30 || records.length >= MAX_RECORDS || !value || typeof value !== "object") return;
-    if (Array.isArray(value)) { value.forEach((item) => visit(item, depth + 1)); return; }
+    if (Array.isArray(value)) { value.forEach((item) => visit(item, depth + 1, inheritedMerchant)); return; }
     const record = value as RecordValue;
-    if (CODE_FIELDS.some((key) => typeof record[key] === "string")) records.push(record);
-    Object.values(record).forEach((item) => visit(item, depth + 1));
+    const owner=record.shop??record.seller??record.merchant;
+    const merchant=field(record,["merchantName","shopName","storeName","companyName"])??(owner&&typeof owner==="object"?field(owner as RecordValue,["title","name"]):undefined)??inheritedMerchant;
+    const identifier=record.identifier && typeof record.identifier==="object" ? record.identifier as RecordValue : undefined;
+    const namedIdentifier=identifier && /^(?:promoCode|couponCode|promo_code|discountCode)$/i.test(String(identifier.propertyID??identifier.name??"")) && typeof identifier.value==="string" ? identifier.value : undefined;
+    const candidate={...record,...(merchant?{merchantName:merchant}:{}),...(namedIdentifier?{promoCode:namedIdentifier}:{})};
+    if (CODE_FIELDS.some((key) => (typeof candidate[key] === "string" || typeof candidate[key] === "number" && Number.isFinite(candidate[key]))) || record["@type"]==="Offer"&&typeof record.description==="string"&&explicitCode(record.description)) records.push(candidate);
+    Object.entries(record).filter(([key])=>!/(?:related|recommend|similar|other_?(?:shops|stores|merchants))/i.test(key)&&!/^(?:session|auth|account|userProfile|personalData|csrf|accessToken|credentials|cart|basket)$/i.test(key)).forEach(([,item]) => visit(item, depth + 1, merchant));
   };
   const parseJson = (text: string) => {
     try { visit(JSON.parse(text)); return; } catch { /* JS assignments need balanced object slices. */ }
@@ -123,7 +152,7 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
         const start = stack.pop()!;
         if (i - start > 50000) continue;
         const candidate = text.slice(start, i + 1);
-        if (/"(?:promoCode|promocode|couponCode|coupon_code|promo_code)"\s*:/.test(candidate)) {
+        if (/"(?:promoCode|promocode|couponCode|coupon_code|promo_code|discountCode|promotionCode|redeemCode)"\s*:/.test(candidate)) {
           try { visit(JSON.parse(candidate)); } catch { /* Ignore malformed data. */ }
         }
       }
@@ -136,6 +165,7 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
   $("[data-promocode], [data-promo-code], [data-coupon-code]").each((_, element) => {
     if (records.length >= MAX_RECORDS) return;
     const el = $(element);
+    if(el.parents("template,[hidden],[aria-hidden=\"true\"],[style*=\"display:none\"],[style*=\"display: none\"]").length)return;
     const card = el.closest("[data-coupon], [data-offer], .coupon, .promocode, .offer");
     records.push({
       promoCode: el.attr("data-promocode") ?? el.attr("data-promo-code") ?? el.attr("data-coupon-code"),
@@ -144,16 +174,8 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
       expiresAt: el.attr("data-expires-at") ?? card.attr("data-expires-at"),
     });
   });
-  return mergePromoCodes(records.map((record) => recordToPromo(record, companyId, sourceUrl, now)).filter((code): code is PromoCode => !!code));
+  return mergePromoCodes(records.map((record) => recordToPromo(record, companyId, sourceUrl, now, options.requireMerchant, options.diagnostics)).filter((code): code is PromoCode => !!code));
 }
 export function mergePromoCodes(codes: PromoCode[]): PromoCode[] {
-  const unique = new Map<string, PromoCode>();
-  for (const code of codes) {
-    const key = `${code.companyId}:${codeKey(code.code)}`;
-    const existing = unique.get(key);
-    if (!existing) { unique.set(key, { ...code, sources: [...code.sources] }); continue; }
-    for (const source of code.sources) if (!existing.sources.some((s) => s.url === source.url)) existing.sources.push(source);
-    // Keep the preferred source's conditions and dates together; don't splice conflicting offers.
-  }
-  return [...unique.values()];
+  return mergeOffers(codes);
 }

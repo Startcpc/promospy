@@ -96,12 +96,15 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
       {offline && <p role="status" className="mt-3 text-sm text-muted-foreground">Нет подключения. Сохранённые коды доступны; поиск продолжится после подключения.</p>}
       {error && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
       {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
-      {state?.report && <p className="mt-3 text-base">Прочитано страниц: {state.report.pagesRead}.</p>}
+      {state?.report && <p className="mt-3 text-base">Найдено: {state.report.couponsFound ?? state.codes.length} · Прочитано страниц: {state.report.pagesRead}.</p>}
       {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
         <div className="mt-3 space-y-2">
+          {state.report && <p>Официальных кодов: {state.report.officialCoupons ?? 0} · Ограничений: {state.report.pagesBlocked ?? 0} · Ошибок разбора: {state.report.parseFailures ?? 0}</p>}
+          {state.report?.budget && <p>Страниц проверено по бюджету: {state.report.budget.pagesUsed} из {state.report.budget.pages}. Индексы и карты: {state.report.budget.discoveryUsed} из {state.report.budget.discoveryRequests}.</p>}
+          {state.report?.discovery?.map((provider,index)=><p key={provider.url+index}>{provider.provider}: {provider.outcome === "ok" ? `найдено ссылок ${provider.found}` : provider.message ?? "индекс не прочитан"}</p>)}
           {state.lastScan && <p>Результаты получены: {formatPromoDate(state.lastScan)} МСК</p>}
           {error && <p>{error}</p>}
-          {state.report?.sourceResults?.map(source => <p key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">{new URL(source.url).hostname}</a>: {source.outcome === "codes" ? `найдено ${source.count}` : source.outcome === "empty" ? "на странице указано, что промокодов нет" : source.outcome === "index" ? "страница магазина" : source.message ?? "не удалось разобрать"}</p>)}
+          {state.report?.sourceResults?.map(source => <p key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">{new URL(source.url).hostname}</a>: {source.outcome === "codes" ? `найдено ${source.count}` : source.outcome === "empty" ? "на странице указано, что промокодов нет" : source.outcome === "index" ? "страница магазина" : source.message ?? "не удалось разобрать"}{source.httpStatus ? ` · ${source.errorCode === "robots" ? "robots.txt: " : ""}HTTP ${source.httpStatus}` : ""}{source.rendering === "unavailable" ? " · локальный браузер недоступен" : ""}</p>)}
           {!state.report?.sourceResults && state.report?.issues?.map(issue => <p key={issue.url}>{new URL(issue.url).hostname}: {issue.reason}</p>)}
           <p>Истёкшие и отклонённые коды скрываются через 24 часа.</p>
           {state.report && <p>Сайтов к чтению: {state.report.discoveredSites}. Цель — до {state.report.targetSites}.</p>}

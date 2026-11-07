@@ -37,6 +37,13 @@ export type PromoCode = {
   conditions: string[];
   verificationDetails?: string;
   evidence?: VerificationEvidence;
+  extraction?: {method:"card"|"structured"|"official"|"local-ai";text:string};
+  confidence?: {score:number;level:"low"|"medium"|"high";reasons:string[]};
+  maxDiscount?: number;
+  appOnly?: boolean;
+  regions?: string[];
+  categories?: string[];
+  channel?: "app"|"online"|"in-store";
 };
 export type ScanLogEntry = {
   time: number;

@@ -1,11 +1,28 @@
 import { getCompanyById, type PromoCode } from "./promocodes";
 
 import { validSourceUrl, validTimestamp } from "./promo-validation";
+import { offerConflict } from "./promo-quality";
 
 export const SAVED_PROMOS_KEY = "promospy:saved-promos:v1";
 export const MAX_SAVED_PROMOS = 100;
 export const MAX_FAVORITES_FILE_BYTES = 4_000_000;
 export type SavedPromo = Pick<PromoCode, "id" | "companyId" | "code"> & { savedAt: number; snapshot?: PromoCode };
+export function savedOfferMatches(item:SavedPromo,offer:Pick<PromoCode,"id"|"companyId"|"code">&Partial<PromoCode>){
+  if(item.companyId!==offer.companyId||item.code!==offer.code)return false;
+  if(!item.snapshot||!Array.isArray(offer.conditions)||typeof offer.discount!=='string')return item.id===offer.id;
+  if(item.id!==offer.id){
+    for(const key of ['minOrder','startsAt','expiresAt','maxDiscount','channel'] as const)if(offer[key]!==undefined&&item.snapshot[key]===undefined)return false;
+    if(/\d/.test(offer.discount)&&!/\d/.test(item.snapshot.discount))return false;
+  }
+  return !offerConflict(item.snapshot,offer as PromoCode);
+}
+export function resolveSavedOffer(item:SavedPromo,codes:PromoCode[]){
+  const exact=codes.find(code=>code.id===item.id&&savedOfferMatches(item,code));
+  if(exact)return exact;
+  if(!item.snapshot)return undefined;
+  const compatible=codes.filter(code=>savedOfferMatches(item,code));
+  return compatible.length===1?compatible[0]:undefined;
+}
 export function validOfferId(value: unknown): value is string {
   return typeof value === "string" && /^[\p{L}\p{N}_:-]{1,128}$/u.test(value);
 }
@@ -35,6 +52,11 @@ export function parseSavedPromos(raw: string | null): SavedPromo[] {
           startsAt: validTimestamp(rawOffer.startsAt) ? rawOffer.startsAt : undefined,
           invalidSince: validTimestamp(rawOffer.invalidSince) ? rawOffer.invalidSince : undefined,
           minOrder: typeof rawOffer.minOrder === "number" && Number.isFinite(rawOffer.minOrder) && rawOffer.minOrder >= 0 ? rawOffer.minOrder : undefined,
+          maxDiscount: typeof rawOffer.maxDiscount === "number" && Number.isFinite(rawOffer.maxDiscount) && rawOffer.maxDiscount >= 0 ? rawOffer.maxDiscount : undefined,
+          appOnly: rawOffer.appOnly === true ? true : undefined,
+          channel: ["app","online","in-store"].includes(rawOffer.channel ?? "") ? rawOffer.channel : undefined,
+          regions: Array.isArray(rawOffer.regions)?rawOffer.regions.filter(value=>typeof value==="string").slice(0,20).map(value=>value.slice(0,200)):undefined,
+          categories: Array.isArray(rawOffer.categories)?rawOffer.categories.filter(value=>typeof value==="string").slice(0,20).map(value=>value.slice(0,200)):undefined,
           verificationDetails: "Сохранённая копия. Применение не проверялось.",
         };
       }

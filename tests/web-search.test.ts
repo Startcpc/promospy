@@ -35,7 +35,8 @@ test('21: official pages finish before the first third-party request',async()=>{
  const order:string[]=[];
  await searchMerchant(company,new AbortController().signal,async target=>{order.push(target);return target.includes('bing.com')?'<rss/>':html;});
  assert.deepEqual(order.slice(0,2),['https://vkusvill.ru/promocodes/','https://vkusvill.ru']);
- assert.ok(order.slice(2).every(target=>!target.startsWith('https://vkusvill.ru')));
+ const firstExternal=order.findIndex(target=>!target.startsWith('https://vkusvill.ru'));
+ assert.ok(firstExternal>=2);assert.ok(order.slice(firstExternal).every(target=>!target.startsWith('https://vkusvill.ru')));
 });
 test('22: official offers are published while other sources are still pending',async()=>{
  let finish!:()=>void;const gate=new Promise<void>(resolve=>{finish=resolve;});let partial=false;

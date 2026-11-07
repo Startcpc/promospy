@@ -7,8 +7,8 @@ import {requestSearch,searchState,savedSearchResults} from '../src/lib/search-st
 const dir=mkdtempSync(path.join(tmpdir(),'promo-cache-')),old=process.env.PROMO_SEARCH_DATA_DIR;
 process.env.PROMO_SEARCH_DATA_DIR=dir;
 after(()=>{if(old===undefined)delete process.env.PROMO_SEARCH_DATA_DIR;else process.env.PROMO_SEARCH_DATA_DIR=old;rmSync(dir,{recursive:true,force:true});});
-const report={phase:'complete' as const,codes:[],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:['https://vkusvill.ru/'],warnings:[],sourceResults:[{url:'https://vkusvill.ru/',official:true,outcome:'empty' as const,count:0}]};
-async function settle(id:number){for(let i=0;i<200;i++){const state=await searchState(id);if(state.status!=='running')return state;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('job did not finish');}
+const report={engineVersion:1,phase:'complete' as const,codes:[],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:['https://vkusvill.ru/'],warnings:[],sourceResults:[{url:'https://vkusvill.ru/',official:true,outcome:'empty' as const,count:0}]};
+async function settle(id:number){for(let i=0;i<200;i++){const state=await searchState(id);if(state.status!=='running'&&state.status!=='queued')return state;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('job did not finish');}
 test('search is deduplicated, cached and subject to a shared cooldown',async()=>{
  let calls=0;const execute=async()=>{calls++;await new Promise(resolve=>setTimeout(resolve,50));return report;};
  await Promise.all([requestSearch(54,execute),requestSearch(54,execute)]);assert.equal(calls,1);

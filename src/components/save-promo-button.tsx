@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Heart } from "lucide-react";
 import type { PromoCode } from "@/lib/promocodes";
 import { setPromoSaved, useSavedPromos } from "@/hooks/use-saved-promos";
+import { savedOfferMatches } from "@/lib/saved-promos";
 
-export function SavePromoButton({ offer }: { offer: Pick<PromoCode, "id" | "code" | "companyId"> }) {
+export function SavePromoButton({ offer }: { offer: Pick<PromoCode, "id" | "code" | "companyId">&Partial<PromoCode> }) {
   const { items, hydrated } = useSavedPromos();
   const [error, setError] = useState<string | null>(null);
-  const saved = items.some(item => item.id === offer.id);
+  const saved = items.some(item => savedOfferMatches(item,offer));
   return <div className="shrink-0">
     <button type="button" disabled={!hydrated} aria-pressed={saved}
       aria-label={`${saved ? "Удалить из избранного" : "Сохранить"} ${offer.code}`}

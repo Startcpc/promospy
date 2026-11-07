@@ -20,6 +20,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
     if (copyTimer.current) clearTimeout(copyTimer.current);
   }, []);
   const status = effectiveStatus(code);
+  const observedAt=Math.max(code.found,...code.sources.map(source=>source.seenAt));
   const colors = {
     found: "bg-slate-100 text-slate-700", official: "bg-emerald-100 text-emerald-800", verified: "bg-green-100 text-green-800", rejected: "bg-orange-100 text-orange-800",
     expired: "bg-gray-100 text-gray-600", unavailable: "bg-amber-100 text-amber-800",
@@ -57,10 +58,16 @@ export function PromoCard({ code }: { code: PromoCode }) {
     <div id={detailsId} hidden={!expanded}>
     <p className="mt-3 text-lg font-bold">{code.discount}</p>
     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+      <p>Последнее чтение источников: {formatPromoDate(observedAt)} МСК</p>
+      {code.confidence && <p>Надёжность извлечения: {code.confidence.level === "high" ? "высокая" : code.confidence.level === "medium" ? "средняя" : "ограниченная"}. Это не проверка применения.</p>}
+      {code.appOnly && <p>Только в приложении</p>}
+      {code.maxDiscount !== undefined && <p>Максимальная скидка: {code.maxDiscount} ₽</p>}
+      {code.regions?.length ? <p>Регионы по источнику: {code.regions.join(", ")}</p> : null}
+      {code.categories?.length ? <p>Категории по источнику: {code.categories.join(", ")}</p> : null}
       {code.minOrder !== undefined && <p>Минимальный заказ: {code.minOrder} ₽</p>}
       {code.startsAt !== undefined && code.startsAt > Date.now() && <p>Акция ещё не началась.</p>}
       {code.startsAt !== undefined && <p>Начало: {formatPromoDate(code.startsAt)} МСК</p>}
-      <p>{code.expiresAt !== undefined ? `Срок по источнику: до ${formatPromoDate(code.expiresAt)} МСК` : "Срок действия в источнике не указан"}</p>
+      <p>{code.expiresAt !== undefined ? `Срок по источнику: до ${formatPromoDate(code.expiresAt)} МСК` : "Точная дата окончания в источнике не указана"}</p>
       {code.conditions.map((condition, index) => <p key={index}>{condition}</p>)}
       {code.checked !== undefined && <p>{code.evidence?.method === "source" ? "Проверка официального источника" : "Попытка проверки"}: {formatPromoDate(code.checked)} МСК</p>}
       {code.verificationDetails && <p>{code.verificationDetails}</p>}

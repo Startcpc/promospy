@@ -12,7 +12,7 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-web-'));
  const code=parseMerchantPage('<title>ВкусВилл</title><article><h3>Первый заказ</h3><p>Промокод: SAVE10</p></article>','https://promokodi.ru/store/vkusvill',getCompanyById(54)!)[0];
  code.id='54:SAVE10';
- writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{phase:'complete',codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:false,outcome:'codes',count:1}]}}));
+ writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{engineVersion:1,phase:'complete',codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:false,outcome:'codes',count:1}]}}));
  const base='http://127.0.0.1:3127';
  const server=spawn(process.execPath,['scripts/start.mjs'],{env:{...process.env,PORT:'3127',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);

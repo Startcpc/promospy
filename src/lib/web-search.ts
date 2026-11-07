@@ -1,116 +1,53 @@
 import { createRequire } from 'node:module';
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
-import * as http from 'node:http';
+import { publicHttp, SourceError, type FetchReceipt } from './public-http';
+import { SEARCH_DOMAINS, publicSources, sourceParser, officialDomains as merchantDomains } from './source-adapters';
+import { DiscoveryBudget, discoverSitemaps, discoverIndexes, parseFeedLinks, pageFeeds, type DiscoveryResult } from './discovery';
+import { parsePublicFeed } from './public-feeds';
+import { browserReader, needsRendering } from './browser-reader';
+import { enrichWithLocalModel } from './source-ai';
+import { searchConfig, ENGINE_VERSION } from './search-config';
+import { safeSource, sourceHost } from './fetch-policy';
 import type { Company } from './companies';
-import { sourceIdentity, validSourceUrl } from './promo-validation';
+import { sourceIdentity } from './promo-validation';
 import type { PromoCode } from './promocodes';
-import { parsePromoCodesFromHtml, mergePromoCodes } from './promo-parser';
-import { parsePublicOfficial, hasPublicOfficialMarkup, PUBLIC_OFFICIAL_URLS } from './official-search';
+import { parsePromoCodesFromHtml, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
 import { extractOfficialDates } from './promo-terms';
 import { extractCouponCards, isChallengePage, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
-// Respect server proxy/CA settings; direct fetch otherwise ignores HTTPS_PROXY.
-if (typeof http.setGlobalProxyFromEnv === 'function') http.setGlobalProxyFromEnv();
-else if (process.env.HTTPS_PROXY || process.env.https_proxy) {
-  const { EnvHttpProxyAgent, setGlobalDispatcher } = createRequire(import.meta.url)('undici') as typeof import('undici');
-  setGlobalDispatcher(new EnvHttpProxyAgent());
-}
-export const SEARCH_DOMAINS = ['promokod.pikabu.ru','promokodi.ru','promokodus.com','promkod.ru','promokod.vbr.ru','berikod.ru','promokod.ru','pepper.ru','skidkidor.ru','kupon.ru','biglion.ru','gilmon.ru','kuponator.ru','kuponation.ru','picodi.com','megabonus.com','backit.me','letyshops.com','kp.ru','aif.ru','banki.ru','sravni.ru','t-j.ru','dtf.ru','vc.ru','ixbt.com','otzovik.com','getcashback.ru','zen.yandex.ru'];
+export { SEARCH_DOMAINS } from './source-adapters';
 export type SearchReport = {
+  engineVersion?:number;
   codes: PromoCode[]; targetSites: number; discoveredSites: number;
   pagesRead: number; pagesFailed: number; visited: string[]; warnings: string[];
   phase?: 'official' | 'sources' | 'complete'; officialPagesRead?: number;
-  issues?: { url: string; reason: string }[];
+  pagesBlocked?: number; parseFailures?: number; couponsFound?:number; officialCoupons?:number;
+  issues?: {url:string;reason:string}[];
   parsedUrls?: string[];
-  sourceResults?: { url: string; official: boolean; outcome: 'codes' | 'empty' | 'index' | 'unrecognized' | 'blocked' | 'error'; count: number; message?: string }[];
+  discovery?: DiscoveryResult[];
+  budget?: {pages:number;pagesUsed:number;discoveryRequests:number;discoveryUsed:number};
+  sourceResults?: {url:string;official:boolean;outcome:'codes'|'empty'|'index'|'unrecognized'|'blocked'|'error';count:number;message?:string;
+    httpStatus?:number;attempts?:number;finalUrl?:string;failureUrl?:string;errorCode?:string;retryAt?:number;rendering?:string;partial?:boolean}[];
 };
+export type SearchOptions={previousUrls?:string[];pageBudget?:number;discoveryBudget?:number};
 export type SearchProgress = (report: SearchReport) => void;
-function host(value: string) { return new URL(value).hostname.replace(/^www\./, ''); }
-export function safeSource(value: string, domains: string[]): boolean {
-  try {
-    const u = new URL(value);
-    return validSourceUrl(value) && u.protocol === 'https:' && !u.username && !u.password && !u.port && !isIP(u.hostname) && domains.includes(host(value));
-  } catch { return false; }
+const host=sourceHost;
+export { safeSource, routedThroughProxy } from './fetch-policy';
+export { decodeSource } from './public-http';
+export async function readPublicPage(url:string,domains:string[],signal:AbortSignal):Promise<string>{
+  const path=new URL(url).pathname;
+  return (await publicHttp.readText(url,domains,signal,/\/robots\.txt$/.test(path)?{kind:'robots',robots:false}:/\.xml(?:\.gz)?$/.test(path)?{kind:'sitemap'}:{})).text;
 }
-function privateAddress(address: string) {
-  if (address.includes(':')) return true;
-  const [a,b] = address.split('.').map(Number);
-  return a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168 || a === 100 && b >= 64 && b <= 127 || a === 198 && (b === 18 || b === 19);
-}
-export function routedThroughProxy(url: string, env: Record<string,string | undefined> = process.env) {
-  if (!(env.https_proxy || env.HTTPS_PROXY)) return false;
-  const target = new URL(url);
-  return !(env.no_proxy || env.NO_PROXY || '').split(',').some(entry => {
-    const rule = entry.trim().toLowerCase();
-    if (rule === '*') return true;
-    if (!rule) return false;
-    const [domain,port] = rule.replace(/^\*?\./,'').split(':');
-    if (port && port !== (target.port || '443')) return false;
-    return target.hostname === domain || target.hostname.endsWith(`.${domain}`);
-  });
-}
-export async function readPublicPage(url: string, domains: string[], signal: AbortSignal): Promise<string> {
-  const bounded = AbortSignal.any([signal, AbortSignal.timeout(12000)]);
-  for (let hop = 0; hop < 4; hop++) {
-    if (!safeSource(url, domains)) throw new Error('Адрес вне списка источников');
-    bounded.throwIfAborted();
-    // A configured proxy resolves the allowlisted destination itself. Local DNS
-    // is often intentionally absent in proxy-only environments; never bypass it.
-    if (!routedThroughProxy(url)) {
-    const records = await new Promise<{address: string; family: number}[]>((resolve,reject) => {
-      const abort = () => reject(bounded.reason);
-      bounded.addEventListener('abort',abort,{once:true});
-      lookup(new URL(url).hostname,{all:true,family:4}).then(resolve,reject).finally(() => bounded.removeEventListener('abort',abort));
-    });
-    if (!records.length || records.some(record => privateAddress(record.address))) throw new Error('Непубличный адрес');
-    }
-    const response = await fetch(url,{redirect:'manual',signal:bounded,headers:{'User-Agent':'PromoSpy/0.8.1 public coupon search','Accept':'text/html,application/rss+xml,application/xml','Accept-Language':'ru-RU'}});
-    if ([301,302,303,307,308].includes(response.status)) {
-      const target = response.headers.get('location'); await response.body?.cancel();
-      if (!target) throw new Error('Перенаправление без адреса');
-      const next = new URL(target,url).href;
-      if (!safeSource(next,domains)) throw new Error('Перенаправление вне списка источников');
-      url = next; continue;
-    }
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`HTTP ${response.status}`); }
-    if (!/text\/html|xml/i.test(response.headers.get('content-type') ?? '')) { await response.body?.cancel(); throw new Error('Ответ не HTML/XML'); }
-    const reader = response.body?.getReader(); if (!reader) throw new Error('Пустой ответ');
-    const chunks: Uint8Array[] = []; let bytes = 0;
-    try {
-      while (true) {
-        const {done,value} = await reader.read(); if (done) break;
-        bytes += value.length; if (bytes > 6_000_000) throw new Error('Страница превышает лимит размера');
-        chunks.push(value);
-      }
-    } finally { await reader.cancel().catch(() => {}); }
-    return decodeSource(Buffer.concat(chunks),response.headers.get('content-type'));
-  }
-  throw new Error('Слишком много перенаправлений');
-}
-export function decodeSource(data: Uint8Array, contentType: string | null) {
-  const header = contentType?.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1];
-  const start = Buffer.from(data.subarray(0,4096)).toString('latin1');
-  const meta = start.match(/<meta[^>]*charset\s*=\s*["']?([^\s;"'>]+)/i)?.[1]
-    ?? start.match(/<\?xml[^>]*encoding=["']([^"']+)/i)?.[1];
-  try {return new TextDecoder(header ?? meta ?? 'utf-8').decode(data);} catch {return new TextDecoder('utf-8').decode(data);}
-}
-export function parseDiscovery(xml: string, domains: string[]): string[] {
-  const $ = load(xml,{xmlMode:true}), unique = new Map<string,string>();
-  for (const value of $('item > link').map((_,el) => $(el).text().trim()).get()) {
-    if (safeSource(value,domains) && !unique.has(sourceIdentity(value))) {
-      const url = new URL(value); url.hash=''; unique.set(sourceIdentity(value),url.href);
-    }
-  }
-  return [...unique.values()];
-}
-export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now(), official = false): PromoCode[] {
+export function parseDiscovery(xml:string,domains:string[]){return parseFeedLinks(xml,domains);}
+export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now(), official = false, diagnostics:ParseDiagnostics={incomplete:false,reasons:[]}): PromoCode[] {
+  if(/^\s*[\[{]/.test(html)){try{const feed=JSON.parse(html);if(typeof feed.version==='string'&&feed.version.startsWith('https://jsonfeed.org/'))return parsePublicFeed(html,url,company,now);}catch{}return parsePromoCodesFromHtml(html,url,company.id,now,{requireMerchant:!official,diagnostics});}
+  if(/<(?:rss|feed)(?:\s|>)/i.test(html))return parsePublicFeed(html,url,company,now);
   const scoped = merchantContent(html), $ = load(scoped);
   const ownHost = host(url) === host(company.website);
   if (!official && !ownHost && !matchesMerchant($('h1').first().text() || $('title').text(),company)) return [];
-  const structured = parsePromoCodesFromHtml(scoped,url,company.id,now);
-  const cards = extractCouponCards(scoped,url,company,now,official || ownHost).map(card => {
+  const structuredDiagnostics:ParseDiagnostics={incomplete:false,reasons:[]},cardDiagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
+  const structured = parsePromoCodesFromHtml(scoped,url,company.id,now,{diagnostics:structuredDiagnostics});
+  const cards = extractCouponCards(scoped,url,company,now,official || ownHost,cardDiagnostics).map(card => {
     const metadata = structured.find(item => item.code === card.code && item.description === card.description);
     if (!metadata) return card;
     const expiresAt = card.expiresAt ?? metadata.expiresAt;
@@ -119,7 +56,9 @@ export function parseMerchantPage(html: string, url: string, company: Company, n
   });
   // The actual coupon card determines whether the campaign is archived. A JSON
   // copy may be stale, while a reused code can belong to a new visible campaign.
-  const result = mergePromoCodes([...cards,...structured]);
+  diagnostics.incomplete=cardDiagnostics.incomplete||(structuredDiagnostics.rejectedCodes??[]).some(code=>!cards.some(card=>card.code===code));
+  diagnostics.reasons=[...cardDiagnostics.reasons,...structuredDiagnostics.reasons].slice(0,5);
+  const result = mergePromoCodes([...cards,...structured.filter(code=>!cards.some(card=>card.code===code.code)&&!cardDiagnostics.rejectedCodes?.includes(code.code))]);
   return result.map(code => {
     const dates = official ? extractOfficialDates([code.description,...code.conditions].join(' ')) : {};
     const startsAt = code.startsAt ?? dates.startsAt, expiresAt = code.expiresAt ?? dates.expiresAt;
@@ -127,11 +66,7 @@ export function parseMerchantPage(html: string, url: string, company: Company, n
   });
 }
 
-const slugs: Record<number,string> = {5:'burger-king',54:'vkusvill',102:'vkusno-i-tochka',201:'magnit',202:'pyaterochka',203:'yandex-lavka',204:'yandex-market',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
-export function officialUrls(company: Company): string[] {
-  const primary = PUBLIC_OFFICIAL_URLS[company.id] ?? ({5:'https://burgerkingrus.ru/coupons/',302:'https://www.kartoshka.com/actions/'} as Record<number,string>)[company.id];
-  return [...new Set([primary,company.website].filter((url): url is string => !!url))];
-}
+export function officialUrls(company:Company){return publicSources.officialUrls(company);}
 export function officialLinks(html: string, base: string, domains: string[]): string[] {
   const $ = load(html);
   return [...new Set($('a[href]').map((_,el) => {
@@ -141,95 +76,99 @@ export function officialLinks(html: string, base: string, domains: string[]): st
     } catch { return ''; }
   }).get().filter(Boolean))].slice(0,4);
 }
-function mergeCodes(codes: PromoCode[], companyId: number): PromoCode[] {
-  const unique = new Map<string,PromoCode>();
-  for (const code of codes) {
-    const previous = unique.get(code.code);
-    if (!previous) { unique.set(code.code,{...code,id:`${companyId}:${code.code}`,sources:[...code.sources]}); continue; }
-    // Official terms take precedence; a third-party card only adds its source.
-    for (const source of code.sources) if (!previous.sources.some(old => old.url === source.url)) previous.sources.push(source);
-  }
-  return [...unique.values()].slice(0,100);
+function mergeCodes(codes: PromoCode[], _companyId: number): PromoCode[] {
+  return mergePromoCodes(codes).slice(0,100);
 }
-export async function searchMerchant(company: Company, signal: AbortSignal, read = readPublicPage, onProgress?: SearchProgress): Promise<SearchReport> {
+export async function searchMerchant(company:Company,signal:AbortSignal,read: (url:string,domains:string[],signal:AbortSignal)=>Promise<string> = readPublicPage,onProgress?:SearchProgress,options:SearchOptions={}):Promise<SearchReport>{
   signal.throwIfAborted();
-  const initial = officialUrls(company), officialDomains = [...new Set(initial.map(host))];
-  const domains = [...new Set([...officialDomains,...SEARCH_DOMAINS])];
-  const report: SearchReport = {codes:[],targetSites:30,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0};
-  const attempted = new Set<string>();
-  const publish = () => {
-    report.codes = mergeCodes(report.codes,company.id);
-    report.discoveredSites = new Set([...attempted].map(host)).size;
+  const config=searchConfig(),pageLimit=Math.min(50,Math.max(6,options.pageBudget??config.pages));
+  const budget=new DiscoveryBudget(Math.min(20,Math.max(3,options.discoveryBudget??config.discoveryRequests)));
+  const initial=officialUrls(company),officialDomains=merchantDomains(company),domains=[...new Set([...officialDomains,...SEARCH_DOMAINS])];
+  const report:SearchReport={engineVersion:ENGINE_VERSION,codes:[],targetSites:domains.length,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0,pagesBlocked:0,parseFailures:0,discovery:budget.results};
+  const attempted=new Map<string,string>(),candidates=new Map<string,string>();
+  const add=(urls:string[])=>{for(const url of urls)if(safeSource(url,domains)&&candidates.size<150)candidates.set(sourceIdentity(url),url);};
+  const publish=()=>{
+    report.codes=mergeCodes(report.codes,company.id);report.couponsFound=report.codes.length;report.officialCoupons=report.codes.filter(code=>code.status==='official').length;
+    report.discoveredSites=new Set([...candidates.values(),...attempted.values()].map(host)).size;
+    report.budget={pages:pageLimit,pagesUsed:attempted.size,discoveryRequests:budget.limit,discoveryUsed:budget.used};
     onProgress?.(structuredClone(report));
   };
-  const visit = async (url: string, official: boolean, stageSignal: AbortSignal): Promise<string | null> => {
-    const identity = sourceIdentity(url);
-    if ([...attempted].some(previous => sourceIdentity(previous) === identity)) return null;
-    attempted.add(url);
-    try {
-      const html = await read(url,official ? officialDomains : domains,stageSignal);
-      if (isChallengePage(html)) {
-        report.sourceResults!.push({url,official,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера'});
-        throw new Error('Сайт запросил проверку браузера');
+  const feeds=new Set<string>();
+  const visit=async(url:string,official:boolean,stageSignal:AbortSignal):Promise<string|null>=>{
+    const identity=sourceIdentity(url),limit=report.phase==='official'?pageLimit-3:pageLimit;
+    if(attempted.has(identity)||attempted.size>=limit||stageSignal.aborted||!safeSource(url,official?officialDomains:domains))return null;
+    attempted.set(identity,url);add([url]);
+    let fetched=false,receipt:FetchReceipt|undefined,actualUrl=url,rendering:string|undefined;
+    try{
+      let html:string;
+      if(read===readPublicPage){const result=await publicHttp.readText(url,official?officialDomains:domains,stageSignal);html=result.text;receipt=result.receipt;actualUrl=receipt.finalUrl;}
+      else html=await read(url,official?officialDomains:domains,stageSignal);
+      const actualOfficial=official||officialDomains.includes(host(actualUrl));
+      if(isChallengePage(html))throw new SourceError('Сайт запросил проверку браузера','restricted',actualUrl,receipt?.status,undefined,receipt?.attempts);
+      fetched=true;report.pagesRead++;report.visited.push(url);if(actualOfficial)report.officialPagesRead!++;
+      const diagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
+      const parse=()=>{const adapter=actualOfficial?sourceParser(company,actualUrl,html):undefined;return adapter?adapter.parse(html,actualUrl,receipt?.observedAt??Date.now()):parseMerchantPage(html,actualUrl,company,receipt?.observedAt??Date.now(),actualOfficial,diagnostics);};
+      let codes:PromoCode[];
+      try{codes=parse();}catch(error){throw new SourceError(error instanceof Error?error.message:'Изменилась разметка источника','parse',actualUrl,receipt?.status,undefined,receipt?.attempts);}
+      if(!codes.length&&diagnostics.incomplete)throw new SourceError(diagnostics.reasons.join('; '),'parse',actualUrl,receipt?.status,undefined,receipt?.attempts);
+      if(!codes.length&&needsRendering(html)&&config.browser){
+        const result=await browserReader.render(actualUrl,actualOfficial?officialDomains:domains,stageSignal);rendering=result.reason;
+        if(result.html){html=result.html;actualUrl=result.finalUrl??actualUrl;codes=parse();}
       }
-      report.pagesRead++; report.visited.push(url);
-      if (official) report.officialPagesRead!++;
-      let codes: PromoCode[];
-      if (official && url === PUBLIC_OFFICIAL_URLS[company.id] && hasPublicOfficialMarkup(company.id,html)) codes = parsePublicOfficial(company.id,html);
-      else codes = parseMerchantPage(html,url,company,Date.now(),official);
-      if (official) codes = codes.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'official',checked:Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение не проверялось.',evidence:{method:'source',observedAt:Date.now(),sourceUrl:url,message:'Официальная публикация'}}));
-      const document = load(html);
-      const merchantMatches = matchesMerchant(`${document('title').text()} ${document('h1').text()}`,company);
-      const couponContext = /промокод|купон|coupon/i.test(`${document('title').text()} ${document('h1').text()}`);
-      const empty = couponContext && (official || merchantMatches) && explicitEmpty(merchantContent(html));
-      const isIndex = !codes.length && !empty && url.replace(/\/$/,'') === company.website.replace(/\/$/,'');
-      const outcome = codes.length ? 'codes' : empty ? 'empty' : isIndex ? 'index' : 'unrecognized';
-      report.sourceResults!.push({url,official,outcome,count:codes.length,...(outcome === 'unrecognized' ? {message:'Страница загружена, но разметка промокодов не распознана'} : {})});
-      if (codes.length || empty) report.parsedUrls!.push(url);
-      if (outcome === 'unrecognized') report.issues!.push({url,reason:'Не распознана разметка промокодов'});
-      report.codes.push(...codes); publish(); return html;
-    } catch (error) {
-      report.pagesFailed++;
-      if (!report.sourceResults!.some(source => source.url === url)) report.sourceResults!.push({url,official,outcome:'error',count:0,message:error instanceof Error ? error.message : 'Ошибка загрузки'});
-      report.issues!.push({url,reason:error instanceof Error ? error.message : 'Не удалось прочитать страницу'});
-      publish(); return null;
+      if(actualOfficial)codes=codes.map(code=>({...code,status:code.status==='expired'?'expired':'official',checked:receipt?.observedAt??Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение в корзине не проверялось.',evidence:{method:'source',observedAt:receipt?.observedAt??Date.now(),sourceUrl:actualUrl,message:'Официальная публикация'}}));
+      const document=load(html),heading=document('title,h1').text(),merchantMatches=matchesMerchant(heading,company);
+      const empty=/промокод|купон|coupon/i.test(heading)&&(actualOfficial||merchantMatches)&&explicitEmpty(merchantContent(html));
+      const isIndex=!codes.length&&!empty&&sourceIdentity(actualUrl)===sourceIdentity(company.website);
+      const outcome=codes.length?'codes':empty?'empty':isIndex?'index':'unrecognized';
+      report.sourceResults!.push({url,official:actualOfficial,outcome,count:codes.length,...(receipt?{httpStatus:receipt.status,attempts:receipt.attempts,finalUrl:actualUrl}:{}),...(rendering?{rendering}:{}),...(diagnostics.incomplete?{partial:true,message:diagnostics.reasons.join('; ')}:{}),...(outcome==='unrecognized'?{message:'Страница загружена, но промокоды не распознаны'}:{})});
+      if(diagnostics.incomplete)report.parseFailures!++;
+      if((codes.length||empty)&&!diagnostics.incomplete)for(const parsed of [url,actualUrl])if(!report.parsedUrls!.includes(parsed))report.parsedUrls!.push(parsed);
+      if(outcome==='unrecognized'){report.parseFailures!++;report.issues!.push({url,reason:'Не распознана разметка промокодов'});}
+      for(const feed of pageFeeds(html,actualUrl,actualOfficial?officialDomains:domains))feeds.add(feed);
+      report.codes.push(...codes);publish();return html;
+    }catch(error){
+      const problem=error instanceof SourceError?error:undefined;
+      const blocked=problem&&['restricted','robots','rate_limit'].includes(problem.code)||problem?.code==='circuit'&&[401,403,429].includes(problem.status??0);
+      if(!fetched)report.pagesFailed++;
+      if(blocked)report.pagesBlocked!++;else if(fetched)report.parseFailures!++;
+      const message=(error instanceof Error?error.message:'Не удалось прочитать источник').slice(0,500);
+      report.sourceResults!.push({url,official,outcome:blocked?'blocked':'error',count:0,message,...(problem?{errorCode:problem.code,...(problem.status?{httpStatus:problem.status}:{}),attempts:problem.attempts,...(problem.retryAt?{retryAt:problem.retryAt}:{}),failureUrl:problem.url}:{}),...(receipt?{finalUrl:actualUrl}:{}),...(rendering?{rendering}:{})});
+      report.issues!.push({url,reason:message});publish();return null;
     }
   };
-  // Finish the official stage before issuing any third-party request.
-  const officialSignal = AbortSignal.any([signal,AbortSignal.timeout(20000)]);
-  const linked = new Set<string>();
-  for (const url of initial) {
-    if (officialSignal.aborted) break;
-    const html = await visit(url,true,officialSignal);
-    if (html) for (const link of officialLinks(html,url,officialDomains)) linked.add(link);
+  const officialSignal=AbortSignal.any([signal,AbortSignal.timeout(Math.min(25000,config.timeoutMs/2))]);
+  const linked=new Set<string>();
+  for(const url of initial){
+    if(officialSignal.aborted)break;
+    const html=await visit(url,true,officialSignal);if(html)for(const link of officialLinks(html,url,officialDomains))linked.add(link);
   }
-  const remaining = [...linked].filter(url => !attempted.has(url)).slice(0,4);
-  await Promise.all(remaining.map(url => officialSignal.aborted ? null : visit(url,true,officialSignal)));
-  signal.throwIfAborted();
-  report.phase = 'sources'; publish();
-  const slug = slugs[company.id];
-  const known = [`https://promokod.pikabu.ru/shops/${slug}`,`https://promokodi.ru/store/${slug}/`,[54,201].includes(company.id) ? `https://getcashback.ru/promocodes/${slug}/` : `https://promokodus.com/campaigns/${slug}`];
-  // Known pages start immediately; RSS discovery cannot hold them up.
-  const knownJob = Promise.all(known.map(url => visit(url,false,signal)));
-  const discovered = new Map<string,string>(); let discoveryCursor = 0, discoveryFailures = 0;
-  await Promise.all(Array.from({length:3},async () => {
-    while (discoveryCursor < SEARCH_DOMAINS.length && !signal.aborted) {
-      const i = discoveryCursor; discoveryCursor += 5;
-      const query = `"${company.name}" промокод (${SEARCH_DOMAINS.slice(i,i+5).map(domain => `site:${domain}`).join(' OR ')})`;
-      try {
-        const xml = await read(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`,['bing.com'],signal);
-        for (const url of parseDiscovery(xml,SEARCH_DOMAINS)) if (!discovered.has(sourceIdentity(url))) discovered.set(sourceIdentity(url),url);
-      } catch { discoveryFailures++; }
+  const history=(options.previousUrls??[]).filter(url=>safeSource(url,domains)).slice(0,16);add(history);
+  for(const url of history)if(officialDomains.includes(host(url)))linked.add(url);
+  await Promise.all([...linked].slice(0,4).map(url=>visit(url,true,officialSignal)));
+  if(!officialSignal.aborted){
+    let hints:string[]=[];
+    if(read===readPublicPage)try{hints=await publicHttp.sitemapHints(initial[0],officialDomains,officialSignal);}catch{}
+    const sitemapPages=await discoverSitemaps(initial,hints,officialDomains,budget,officialSignal,read);add(sitemapPages);
+    await Promise.all(sitemapPages.slice(0,4).map(url=>visit(url,true,officialSignal)));
+    for(const url of [...feeds].filter(url=>officialDomains.includes(host(url))).slice(0,2))await visit(url,true,officialSignal);
+  }
+  signal.throwIfAborted();report.phase='sources';publish();
+  const known=publicSources.seedUrls(company);add(known);add(history);
+  const direct=[...new Set([...known,...history.filter(url=>!officialDomains.includes(host(url)))])];
+  let directCursor=0;
+  const directJob=Promise.all(Array.from({length:3},async()=>{while(directCursor<direct.length&&!signal.aborted)await visit(direct[directCursor++],false,signal);}));
+  await discoverIndexes(company,SEARCH_DOMAINS,budget,signal,read,urls=>{add(urls);publish();});
+  await directJob;
+  const remaining=[...candidates.values()].filter(url=>!attempted.has(sourceIdentity(url))).slice(0,Math.max(0,pageLimit-attempted.size));
+  let cursor=0;
+  await Promise.all(Array.from({length:3},async()=>{while(cursor<remaining.length&&!signal.aborted){const url=remaining[cursor++];await visit(url,officialDomains.includes(host(url)),signal);}}));
+  for(const feed of [...feeds].slice(0,3))if(!signal.aborted)await visit(feed,officialDomains.includes(host(feed)),signal);
+  if(budget.results.some(result=>result.outcome==='error'))report.warnings.push('Часть индексов или карт сайта не прочитана; остальные источники проверены независимо.');
+  if(process.env.PROMO_OLLAMA_MODEL){
+    let count=0;
+    for(let i=0;i<report.codes.length&&!signal.aborted&&count<2;i++)if(report.codes[i].status!=='official'&&(/^Промокод\b/i.test(report.codes[i].description)||report.codes[i].conditions.length<=1)){
+      report.codes[i]=await enrichWithLocalModel(report.codes[i],signal);count++;publish();
     }
-  }));
-  await knownJob;
-  if (discoveryFailures) report.warnings.push(`Не получена поисковая выдача для ${discoveryFailures} групп; прямые адреса проверены отдельно.`);
-  const candidates = [...discovered.values()].filter(url => ![...attempted].some(previous => sourceIdentity(previous) === sourceIdentity(url))).slice(0,Math.max(0,30-attempted.size));
-  let cursor = 0;
-  await Promise.all(Array.from({length:3},async () => {
-    while (cursor < candidates.length && !signal.aborted) await visit(candidates[cursor++],false,signal);
-  }));
-  signal.throwIfAborted();
-  report.phase = 'complete'; publish();
-  return report;
+  }
+  signal.throwIfAborted();report.phase='complete';publish();return report;
 }

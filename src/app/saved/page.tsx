@@ -8,7 +8,7 @@ import { SavePromoButton } from "@/components/save-promo-button";
 import { useSavedPromos } from "@/hooks/use-saved-promos";
 import { getCompanyById, effectiveStatus, type PromoCode } from "@/lib/promocodes";
 
-import { savedIdBatches } from "@/lib/saved-promos";
+import { savedIdBatches, resolveSavedOffer } from "@/lib/saved-promos";
 import { browserRequestSignal } from "@/lib/browser-request";
 import { FavoritesTransfer } from "@/components/favorites-transfer";
 import { canRequestFromPage, watchPageActivity } from "@/lib/page-activity";
@@ -76,7 +76,7 @@ export default function SavedPage() {
 
   const byId = new Map((current?.codes ?? []).map(code => [code.id, code]));
   const filtered = items.filter(item => {
-    const offer = byId.get(item.id) ?? item.snapshot;
+    const offer = resolveSavedOffer(item,current?.codes??[]) ?? item.snapshot;
     if (activeOnly && (!offer || effectiveStatus(offer, now) === "expired" || offer.startsAt !== undefined && offer.startsAt > now)) return false;
     const terms = [item.code, getCompanyById(item.companyId)?.name ?? "", offer?.description ?? "", offer?.discount ?? "", ...(offer?.conditions ?? [])].join(" ").toLocaleLowerCase("ru");
     return query.trim().toLocaleLowerCase("ru").split(/\s+/).every(word => terms.includes(word));
@@ -104,10 +104,10 @@ export default function SavedPage() {
       {current?.loadedAt && <p className="mb-4 text-xs text-muted-foreground">Обновлено: {formatPromoDate(current.loadedAt)} МСК</p>}
       {!loading && filtered.length === 0 && <p className="py-8 text-center text-muted-foreground">Нет сохранённых кодов по выбранным условиям.</p>}
       <div className="grid items-start gap-4 sm:grid-cols-2">{filtered.map(item => {
-        const offer = byId.get(item.id) ?? item.snapshot;
+        const offer = resolveSavedOffer(item,current?.codes??[]) ?? item.snapshot;
         return <div key={item.id}>
           <Link href={`/company/${item.companyId}`} className="mb-2 block text-sm font-semibold underline">{getCompanyById(item.companyId)?.name}</Link>
-          {offer ? <><p className="mb-2 text-sm text-muted-foreground">{byId.has(item.id) ? "Найдено на сайтах. Применение не проверялось." : "Сохранённая копия — без подтверждения актуальности."}</p><PromoCard code={offer} /></> : <article className="rounded-xl border bg-card p-3">
+          {offer ? <><p className="mb-2 text-sm text-muted-foreground">{resolveSavedOffer(item,current?.codes??[]) ? "Найдено на сайтах. Применение не проверялось." : "Сохранённая копия — без подтверждения актуальности."}</p><PromoCard code={offer} /></> : <article className="rounded-xl border bg-card p-3">
             <div className="flex items-start justify-between gap-3"><code className="min-w-0 break-all rounded-lg bg-muted px-3 py-2 font-bold">{item.code}</code><SavePromoButton offer={item} /></div>
             <p className="mt-3 text-sm text-muted-foreground">{loading ? "Загружаем условия и статус…" : current?.error ? "Нет свежих данных об этом предложении." : "Предложение больше не найдено. Проверьте новые акции на странице магазина."}</p>
           </article>}
