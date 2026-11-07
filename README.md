@@ -56,7 +56,7 @@ pnpm exec playwright install chromium # только для браузерных
 pnpm test:ui
 ```
 
-Браузерные проверки требуют установленного Chromium. GitHub Actions запускает Linux-проверки на Node 22 и 24; сборка и браузер выполняются на Node 22. Отдельные проверки поиска, данных и запуска выполняются на macOS 14 и Windows 2022. Для системного Chromium: `PROMO_TEST_CHROMIUM_EXECUTABLE=/usr/bin/chromium pnpm test:ui`.
+Браузерные проверки требуют установленного Chromium. GitHub Actions запускает Linux-проверки на Node 22 и 24; сборка и браузер выполняются на Node 22. Отдельные проверки поиска, данных и запуска выполняются на macOS 15 Intel и Windows 2022. Для системного Chromium: `PROMO_TEST_CHROMIUM_EXECUTABLE=/usr/bin/chromium pnpm test:ui`.
 
 Production: `pnpm build`, затем `pnpm start`. Задайте абсолютный `PROMO_SEARCH_DATA_DIR` на постоянном диске. За прокси с переписанным Host задайте `PROMO_PUBLIC_ORIGIN`; Codespaces определяется автоматически.
 
