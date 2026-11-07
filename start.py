@@ -206,6 +206,7 @@ def main():
     parser.add_argument('--check', action='store_true', help='проверить окружение без установки')
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--dev', action='store_true', help='режим редактирования с обновлением страницы')
+    parser.add_argument('--render-js', action='store_true', help='рендерить открытые JS-страницы через Chromium (не обходит блокировки)')
     parser.add_argument('--port', type=int, default=3000)
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument('--backup', action='store_true', help='сохранить резервную копию результатов поиска')
@@ -240,7 +241,12 @@ def main():
             run([node, '--import', ROOT / 'scripts/register-ts.mjs', ROOT / 'scripts/search-cache.mjs', 'restore', Path(args.restore).expanduser().resolve()], os.environ.copy())
             return
         node, env = prepare_runtime(node,args.dev)
+        if args.render_js:
+            # Browser downloads are opt-in; the normal launcher remains lightweight.
+            run([node, ROOT / 'node_modules/playwright/cli.js', 'install', 'chromium'], env)
     env.update(PORT=str(port), HOSTNAME='127.0.0.1')
+    if args.render_js:
+        env['PROMO_RENDER_JS'] = '1'
     url = f'http://localhost:{port}'
     command = [node, ROOT / 'node_modules/next/dist/bin/next', 'dev', '--webpack', '-p', str(port)] if args.dev else [node, ROOT / 'scripts/start.mjs']
     print(f'PromoSpy: {url}\nОстановить: Ctrl+C', flush=True)

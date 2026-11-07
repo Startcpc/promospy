@@ -2,6 +2,9 @@ import { createRequire } from 'node:module';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import * as http from 'node:http';
+import { HttpPageError, resilientRequest } from './network-resilience';
+import { looksLikeClientRenderedShell, renderPublicPage } from './browser-render';
+import { enrichLiteralTerms, enrichWithLocalModel } from './promo-nlp';
 import type { Company } from './companies';
 import { sourceIdentity, validSourceUrl } from './promo-validation';
 import type { PromoCode } from './promocodes';
@@ -52,42 +55,73 @@ export function routedThroughProxy(url: string, env: Record<string,string | unde
   });
 }
 export async function readPublicPage(url: string, domains: string[], signal: AbortSignal): Promise<string> {
-  const bounded = AbortSignal.any([signal, AbortSignal.timeout(12000)]);
-  for (let hop = 0; hop < 4; hop++) {
-    if (!safeSource(url, domains)) throw new Error('Адрес вне списка источников');
-    bounded.throwIfAborted();
-    // A configured proxy resolves the allowlisted destination itself. Local DNS
-    // is often intentionally absent in proxy-only environments; never bypass it.
-    if (!routedThroughProxy(url)) {
-    const records = await new Promise<{address: string; family: number}[]>((resolve,reject) => {
-      const abort = () => reject(bounded.reason);
-      bounded.addEventListener('abort',abort,{once:true});
-      lookup(new URL(url).hostname,{all:true,family:4}).then(resolve,reject).finally(() => bounded.removeEventListener('abort',abort));
-    });
-    if (!records.length || records.some(record => privateAddress(record.address))) throw new Error('Непубличный адрес');
-    }
-    const response = await fetch(url,{redirect:'manual',signal:bounded,headers:{'User-Agent':'PromoSpy/0.8.1 public coupon search','Accept':'text/html,application/rss+xml,application/xml','Accept-Language':'ru-RU'}});
-    if ([301,302,303,307,308].includes(response.status)) {
-      const target = response.headers.get('location'); await response.body?.cancel();
-      if (!target) throw new Error('Перенаправление без адреса');
-      const next = new URL(target,url).href;
-      if (!safeSource(next,domains)) throw new Error('Перенаправление вне списка источников');
-      url = next; continue;
-    }
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`HTTP ${response.status}`); }
-    if (!/text\/html|xml/i.test(response.headers.get('content-type') ?? '')) { await response.body?.cancel(); throw new Error('Ответ не HTML/XML'); }
-    const reader = response.body?.getReader(); if (!reader) throw new Error('Пустой ответ');
-    const chunks: Uint8Array[] = []; let bytes = 0;
-    try {
-      while (true) {
-        const {done,value} = await reader.read(); if (done) break;
-        bytes += value.length; if (bytes > 6_000_000) throw new Error('Страница превышает лимит размера');
-        chunks.push(value);
+  if (!safeSource(url, domains)) throw new Error('Адрес вне списка источников');
+  // Retries are bounded and share a per-domain token bucket across all scans.
+  return resilientRequest(host(url), signal, async () => {
+    const bounded = AbortSignal.any([signal, AbortSignal.timeout(12000)]);
+    let current = url;
+    for (let hop = 0; hop < 4; hop++) {
+      if (!safeSource(current, domains)) throw new Error('Адрес вне списка источников');
+      bounded.throwIfAborted();
+      // Proxy deployments intentionally resolve destinations remotely; normal
+      // direct requests reject local/private IPv4 destinations before fetching.
+      if (!routedThroughProxy(current)) {
+        const records = await new Promise<{address: string; family: number}[]>((resolve, reject) => {
+          const abort = () => reject(bounded.reason);
+          bounded.addEventListener('abort', abort, { once: true });
+          lookup(new URL(current).hostname, { all: true, family: 4 })
+            .then(resolve, reject).finally(() => bounded.removeEventListener('abort', abort));
+        });
+        if (!records.length || records.some(record => privateAddress(record.address))) {
+          throw new Error('Непубличный адрес');
+        }
       }
-    } finally { await reader.cancel().catch(() => {}); }
-    return decodeSource(Buffer.concat(chunks),response.headers.get('content-type'));
-  }
-  throw new Error('Слишком много перенаправлений');
+      const response = await fetch(current, {
+        redirect: 'manual',
+        signal: bounded,
+        headers: {
+          'User-Agent': 'PromoSpy/0.9 public promotion discovery',
+          'Accept': 'text/html,application/xhtml+xml,application/rss+xml,application/xml,application/json',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.7',
+        },
+      });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const target = response.headers.get('location');
+        await response.body?.cancel();
+        if (!target) throw new Error('Перенаправление без адреса');
+        const next = new URL(target, current).href;
+        if (!safeSource(next, domains)) throw new Error('Перенаправление вне списка источников');
+        current = next;
+        continue;
+      }
+      if (!response.ok) {
+        const failure = new HttpPageError(response.status, response.headers.get('retry-after'));
+        await response.body?.cancel();
+        throw failure;
+      }
+      if (!/text\/html|xml|application\/(?:[\w.+-]*\+)?json/i.test(response.headers.get('content-type') ?? '')) {
+        await response.body?.cancel();
+        throw new Error('Ответ не HTML/XML/JSON');
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Пустой ответ');
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.length;
+          if (bytes > 6_000_000) throw new Error('Страница превышает лимит размера');
+          chunks.push(value);
+        }
+      } finally {
+        await reader.cancel().catch(() => {});
+      }
+      return decodeSource(Buffer.concat(chunks), response.headers.get('content-type'));
+    }
+    throw new Error('Слишком много перенаправлений');
+  });
 }
 export function decodeSource(data: Uint8Array, contentType: string | null) {
   const header = contentType?.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1];
@@ -157,6 +191,8 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
   const domains = [...new Set([...officialDomains,...SEARCH_DOMAINS])];
   const report: SearchReport = {codes:[],targetSites:30,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0};
   const attempted = new Set<string>();
+  let browserBudget = 2;
+  let localModelBudget = 4;
   const publish = () => {
     report.codes = mergeCodes(report.codes,company.id);
     report.discoveredSites = new Set([...attempted].map(host)).size;
@@ -167,16 +203,33 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
     if ([...attempted].some(previous => sourceIdentity(previous) === identity)) return null;
     attempted.add(url);
     try {
-      const html = await read(url,official ? officialDomains : domains,stageSignal);
+      let html = await read(url,official ? officialDomains : domains,stageSignal);
       if (isChallengePage(html)) {
         report.sourceResults!.push({url,official,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера'});
         throw new Error('Сайт запросил проверку браузера');
+      }
+      // Render only successful but empty client-side shells. Access-denied pages
+      // never reach this fallback; the browser cannot override a site restriction.
+      if (browserBudget > 0 && process.env.PROMO_RENDER_JS === '1' && looksLikeClientRenderedShell(html)) {
+        browserBudget--;
+        try {
+          html = await renderPublicPage(url, official ? officialDomains : domains, stageSignal) ?? html;
+        } catch (error) {
+          if (stageSignal.aborted) throw error;
+          report.warnings.push('JS-страница не отрисована: ' + (error instanceof Error ? error.message : 'ошибка браузера'));
+        }
       }
       report.pagesRead++; report.visited.push(url);
       if (official) report.officialPagesRead!++;
       let codes: PromoCode[];
       if (official && url === PUBLIC_OFFICIAL_URLS[company.id] && hasPublicOfficialMarkup(company.id,html)) codes = parsePublicOfficial(company.id,html);
       else codes = parseMerchantPage(html,url,company,Date.now(),official);
+      codes = codes.map(code => enrichLiteralTerms(code));
+      if (codes.length && localModelBudget > 0 && process.env.PROMO_OLLAMA_MODEL) {
+        const count = Math.min(codes.length, localModelBudget);
+        localModelBudget -= count;
+        codes = [...await enrichWithLocalModel(codes.slice(0, count), stageSignal), ...codes.slice(count)];
+      }
       if (official) codes = codes.map(code => ({...code,status:code.status === 'expired' ? 'expired' : 'official',checked:Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение не проверялось.',evidence:{method:'source',observedAt:Date.now(),sourceUrl:url,message:'Официальная публикация'}}));
       const document = load(html);
       const merchantMatches = matchesMerchant(`${document('title').text()} ${document('h1').text()}`,company);
@@ -190,7 +243,8 @@ export async function searchMerchant(company: Company, signal: AbortSignal, read
       report.codes.push(...codes); publish(); return html;
     } catch (error) {
       report.pagesFailed++;
-      if (!report.sourceResults!.some(source => source.url === url)) report.sourceResults!.push({url,official,outcome:'error',count:0,message:error instanceof Error ? error.message : 'Ошибка загрузки'});
+      const outcome = error instanceof HttpPageError && [401, 403, 429].includes(error.status) ? 'blocked' : 'error';
+      if (!report.sourceResults!.some(source => source.url === url)) report.sourceResults!.push({url,official,outcome,count:0,message:error instanceof Error ? error.message : 'Ошибка загрузки'});
       report.issues!.push({url,reason:error instanceof Error ? error.message : 'Не удалось прочитать страницу'});
       publish(); return null;
     }
