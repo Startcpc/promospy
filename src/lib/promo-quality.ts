@@ -20,8 +20,11 @@ export function promoAudience(code:Pick<PromoCode,'description'|'conditions'>){
   const repeat=/повторн[а-яё]*\s+(?:заказ|покупк)|repeat\s+(?:order|purchase)|existing customers/i.test(text);
   return first&&!repeat?'new':repeat&&!first?'existing':undefined;
 }
+export const restrictionList=(values:string[]|undefined)=>[...new Set((values??[]).map(value=>value.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ').trim()).filter(Boolean))].sort();
 export function offerConflict(a:PromoCode,b:PromoCode){
   for(const key of ['minOrder','startsAt','expiresAt','maxDiscount','channel'] as const)if(a[key]!==undefined&&b[key]!==undefined&&a[key]!==b[key])return true;
+  if(a.appOnly!==undefined&&b.appOnly!==undefined&&a.appOnly!==b.appOnly)return true;
+  for(const key of ['regions','categories'] as const)if(a[key]?.length&&b[key]?.length&&JSON.stringify(restrictionList(a[key]))!==JSON.stringify(restrictionList(b[key])))return true;
   const discount=(value:string)=>value.replace(/[−–-\s]/g,'').replace(/руб(?:лей|ля)?\.?/gi,'₽').replace(',','.');
   if(a.discount!=='По условиям акции'&&b.discount!=='По условиям акции'&&/\d/.test(a.discount)&&/\d/.test(b.discount)&&discount(a.discount)!==discount(b.discount))return true;
   const audienceA=promoAudience(a),audienceB=promoAudience(b);

@@ -40,8 +40,8 @@ export async function readPublicPage(url:string,domains:string[],signal:AbortSig
 }
 export function parseDiscovery(xml:string,domains:string[]){return parseFeedLinks(xml,domains);}
 export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now(), official = false, diagnostics:ParseDiagnostics={incomplete:false,reasons:[]}): PromoCode[] {
-  if(/^\s*[\[{]/.test(html)){try{const feed=JSON.parse(html);if(typeof feed.version==='string'&&feed.version.startsWith('https://jsonfeed.org/'))return parsePublicFeed(html,url,company,now);}catch{}return parsePromoCodesFromHtml(html,url,company.id,now,{requireMerchant:!official,diagnostics});}
-  if(/<(?:rss|feed)(?:\s|>)/i.test(html))return parsePublicFeed(html,url,company,now);
+  if(/^\s*[\[{]/.test(html)){try{const feed=JSON.parse(html);if(typeof feed.version==='string'&&feed.version.startsWith('https://jsonfeed.org/'))return parsePublicFeed(html,url,company,now,diagnostics);}catch{}return parsePromoCodesFromHtml(html,url,company.id,now,{requireMerchant:!official,diagnostics});}
+  if(/<(?:rss|feed)(?:\s|>)/i.test(html))return parsePublicFeed(html,url,company,now,diagnostics);
   const scoped = merchantContent(html), $ = load(scoped);
   const ownHost = host(url) === host(company.website);
   if (!official && !ownHost && !matchesMerchant($('h1').first().text() || $('title').text(),company)) return [];

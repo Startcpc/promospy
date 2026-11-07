@@ -1,3 +1,4 @@
+import { ENGINE_VERSION } from "../src/lib/search-config";
 import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync,rmSync,readFileSync,writeFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import {requestSearch,searchState,savedSearchResults} from '../src/lib/search-st
 const dir=mkdtempSync(path.join(tmpdir(),'promo-cache-')),old=process.env.PROMO_SEARCH_DATA_DIR;
 process.env.PROMO_SEARCH_DATA_DIR=dir;
 after(()=>{if(old===undefined)delete process.env.PROMO_SEARCH_DATA_DIR;else process.env.PROMO_SEARCH_DATA_DIR=old;rmSync(dir,{recursive:true,force:true});});
-const report={engineVersion:1,phase:'complete' as const,codes:[],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:['https://vkusvill.ru/'],warnings:[],sourceResults:[{url:'https://vkusvill.ru/',official:true,outcome:'empty' as const,count:0}]};
+const report={engineVersion:ENGINE_VERSION,phase:'complete' as const,codes:[],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:['https://vkusvill.ru/'],warnings:[],sourceResults:[{url:'https://vkusvill.ru/',official:true,outcome:'empty' as const,count:0}]};
 async function settle(id:number){for(let i=0;i<200;i++){const state=await searchState(id);if(state.status!=='running'&&state.status!=='queued')return state;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('job did not finish');}
 test('search is deduplicated, cached and subject to a shared cooldown',async()=>{
  let calls=0;const execute=async()=>{calls++;await new Promise(resolve=>setTimeout(resolve,50));return report;};
@@ -46,6 +47,10 @@ test('zero readable pages preserve cache and expose a neutral retry state',async
 });
 test('fresh empty cache from the old parser cannot suppress a new search',async()=>{
  const id=203;writeFileSync(path.join(dir,`${id}.json`),JSON.stringify({companyId:id,at:Date.now(),report:{...report,sourceResults:undefined}}));
+ let calls=0;await requestSearch(id,async()=>{calls++;return report;});await settle(id);assert.equal(calls,1);
+});
+test('upgrading the engine refreshes a current cache without waiting for its TTL',async()=>{
+ const id=203;writeFileSync(path.join(dir,`${id}.json`),JSON.stringify({companyId:id,at:Date.now(),report:{...report,engineVersion:ENGINE_VERSION-1}}));
  let calls=0;await requestSearch(id,async()=>{calls++;return report;});await settle(id);assert.equal(calls,1);
 });
 test('unrecognized markup keeps prior offers and does not renew a successful timestamp',async()=>{

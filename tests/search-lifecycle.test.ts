@@ -1,3 +1,4 @@
+import { ENGINE_VERSION } from "../src/lib/search-config";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp,readFile,rm } from 'node:fs/promises';
@@ -10,7 +11,7 @@ test('shutdown checkpoints observed results and a new process resumes an interru
   const directory=await mkdtemp(path.join(tmpdir(),'promospy-checkpoint-'));
   const loader=fileURLToPath(new URL('../scripts/register-ts.mjs',import.meta.url)),storeModuleUrl=new URL('../src/lib/search-store.ts',import.meta.url).href;
   const code={id:'54:CHECKPOINT20',companyId:54,code:'CHECKPOINT20',description:'Observed fixture',discount:'20%',status:'official',found:100,checked:100,conditions:[],sources:[{url:'https://vkusvill.ru/promocodes/',name:'vkusvill.ru',seenAt:100}]};
-  const report={engineVersion:1,phase:'official',codes:[code],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:[code.sources[0].url],parsedUrls:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:true,outcome:'codes',count:1}]};
+  const report={engineVersion:ENGINE_VERSION,phase:'official',codes:[code],targetSites:30,discoveredSites:1,pagesRead:1,pagesFailed:0,visited:[code.sources[0].url],parsedUrls:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:true,outcome:'codes',count:1}]};
   const options={encoding:'utf8' as const,env:{...process.env,PROMO_SEARCH_DATA_DIR:directory},timeout:10000};
   try{
     const first='import {requestSearch,shutdownSearches} from '+JSON.stringify(storeModuleUrl)+';const report='+JSON.stringify(report)+';await requestSearch(54,async(_company,signal,_read,progress)=>{progress(report);await new Promise((_r,reject)=>signal.addEventListener("abort",()=>reject(signal.reason),{once:true}));return report;});await shutdownSearches();';

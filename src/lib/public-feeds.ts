@@ -4,9 +4,10 @@ import type { PromoCode } from './promocodes';
 import { matchesMerchant, extractCouponCards } from './source-extraction';
 import { foreignMerchantHeading } from './promo-quality';
 import { mergeOffers } from './offer-identity';
+import type { ParseDiagnostics } from './promo-parser';
 const {load}=createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 const escape=(value:string)=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-export function parsePublicFeed(text:string,url:string,company:Company,now=Date.now()):PromoCode[]{
+export function parsePublicFeed(text:string,url:string,company:Company,now=Date.now(),diagnostics?:ParseDiagnostics):PromoCode[]{
   let feedTitle='',entries:{title:string;body:string}[]=[];
   if(/^\s*\{/.test(text)){
     try{
@@ -18,12 +19,15 @@ export function parsePublicFeed(text:string,url:string,company:Company,now=Date.
   }else{
     const $=load(text,{xmlMode:true});if(!$('rss,feed').length)return [];
     feedTitle=$('channel > title,feed > title').first().text();
-    entries=$('item,entry').slice(0,100).toArray().map(element=>({title:$(element).children('title').text(),body:$(element).children('description,content,summary').first().text()}));
+    entries=$('item,entry').slice(0,100).toArray().map(element=>{
+      const item=$(element),content=item.children('content\\:encoded,content').first(),body=content.length?content:item.children('description,summary').first();
+      return {title:item.children('title').text(),body:body.attr('type')==='xhtml'?body.html()??'':body.text()};
+    });
   }
   const codes:PromoCode[]=[];
   for(const {title,body} of entries){
     if(foreignMerchantHeading(title,company.id)||!matchesMerchant(title,company)&&!matchesMerchant(feedTitle,company))continue;
-    codes.push(...extractCouponCards('<h1>'+escape(company.name)+'</h1><article><h3>'+escape(title)+'</h3>'+body.slice(0,20000)+'</article>',url,company,now,true));
+    codes.push(...extractCouponCards('<h1>'+escape(company.name)+'</h1><article><h3>'+escape(title)+'</h3>'+body.slice(0,20000)+'</article>',url,company,now,true,diagnostics));
   }
   return mergeOffers(codes);
 }

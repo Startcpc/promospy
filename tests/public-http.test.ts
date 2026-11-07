@@ -81,6 +81,39 @@ test('shared URL retrieval survives cancellation of only one subscriber',async()
   const second=http.readText(url,domains,AbortSignal.timeout(2000),options);abort.abort();release();
   await rejected;assert.match((await second).text,/Public/);assert.equal(calls,1);
 });
+test('a new subscriber does not inherit a request already cancelled by its last subscriber',async()=>{
+ let calls=0;
+ const http=client(async(_input,init)=>{
+  calls++;if(calls>1)return html();
+  return new Promise<Response>((_resolve,reject)=>{init!.signal!.addEventListener('abort',()=>reject(init!.signal!.reason),{once:true});});
+ });
+ const controller=new AbortController(),first=http.readText(url,domains,controller.signal,options);
+ const rejected=assert.rejects(first);await new Promise(resolve=>setTimeout(resolve,0));controller.abort();
+ const second=http.readText(url,domains,AbortSignal.timeout(2000),options);
+ await rejected;assert.match((await second).text,/Public/);assert.equal(calls,2);
+});
+test('a new non-cacheable response invalidates an older conditional representation',async()=>{
+ for(const headers of [{'cache-control':'no-store'},{'cache-control':'private'},{'set-cookie':'session=private'},{vary:'*'}] as Record<string,string>[]){
+  let calls=0;
+  const http=client(async(_input,init)=>{
+   calls++;
+   if(calls===3){assert.equal(new Headers(init?.headers).has('if-none-match'),false);return html();}
+   return new Response('version '+calls,{headers:{'content-type':'text/html',etag:'"version-'+calls+'"',...(calls===2?headers:{})}});
+  },{retries:0});
+  for(let i=0;i<3;i++)await http.readText(url,domains,AbortSignal.timeout(2000),options);
+ }
+});
+test('a 304 with no-store can supply the current response but cannot stay cached',async()=>{
+ let calls=0;
+ const http=client(async(_input,init)=>{
+  if(++calls===1)return new Response('current',{headers:{'content-type':'text/html',etag:'"current"'}});
+  if(calls===2)return new Response(null,{status:304,headers:{'cache-control':'no-store'}});
+  assert.equal(new Headers(init?.headers).has('if-none-match'),false);return html();
+ },{retries:0});
+ await http.readText(url,domains,AbortSignal.timeout(2000),options);
+ assert.equal((await http.readText(url,domains,AbortSignal.timeout(2000),options)).text,'current');
+ await http.readText(url,domains,AbortSignal.timeout(2000),options);
+});
 test('robots rules are checked first; a disallow never fetches the protected document',async()=>{
   const seen:string[]=[];const http=client(async input=>{seen.push(String(input));return new Response('User-agent: *\nDisallow: /private\nAllow: /private/public\nSitemap: https://example.org/sitemap.xml',{headers:{'content-type':'text/plain'}});});
   await assert.rejects(http.readText('https://example.org/private/a',domains,AbortSignal.timeout(2000)),error=>error instanceof SourceError&&error.code==='robots');

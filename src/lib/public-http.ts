@@ -17,6 +17,7 @@ export class SourceError extends Error {
 }
 type CachedResponse={body:Uint8Array;contentType:string;etag:string|null;modified:string|null;at:number};
 type ReadOptions={kind?:FetchKind;robots?:boolean;maxBytes?:number};
+const cacheable=(headers:Headers)=>!/no-store|private/i.test(headers.get('cache-control')??'')&&!headers.has('set-cookie')&&headers.get('vary')?.trim()!=='*';
 type ClientOptions={
   transport?:typeof fetch;
   dispatch?:(url:string,signal:AbortSignal)=>Promise<Dispatcher|undefined>;
@@ -81,7 +82,7 @@ export class PublicHttpClient {
     if(!safeSource(url,domains))throw new SourceError('Адрес вне списка публичных источников','restricted',url);
     const key=sourceIdentity(url)+'|'+[...domains].sort().join(',')+'|'+(options.kind??'document')+'|'+(options.robots!==false)+'|'+(options.maxBytes??this.config.maxBytes);
     let entry=this.inflight.get(key);
-    if(!entry){
+    if(!entry||entry.controller.signal.aborted){
       const controller=new AbortController();
       const item={controller,users:0,promise:Promise.resolve(null as unknown as PublicDocument)};
       item.promise=this.perform(url,domains,controller.signal,options).finally(()=>{if(this.inflight.get(key)===item)this.inflight.delete(key);});
@@ -165,6 +166,7 @@ export class PublicHttpClient {
               if(!representation||!representation.etag&&!representation.modified)throw new SourceError('HTTP 304 без сохранённого содержимого с валидатором','http',url,304);
               if(representation.body.length>Math.min(options.maxBytes??this.config.maxBytes,this.config.maxBytes))throw new SourceError('Сохранённый ответ превышает лимит размера','size',url,304);
               representation.at=Date.now();
+              if(!cacheable(response.headers))this.forget(key);
               return {document:{body:representation.body,contentType:representation.contentType,receipt:{url:original,finalUrl:url,status:304,attempts,revalidated:true,observedAt:Date.now(),bytes:representation.body.length}}};
             }
             if(!response.ok){
@@ -188,7 +190,8 @@ export class PublicHttpClient {
             if(!size)throw new SourceError('Пустой ответ источника','empty',url,response.status);
             if(length>0&&!response.headers.get('content-encoding')&&size<length)throw new SourceError('Источник прислал неполный ответ','partial',url,response.status);
             const body=Buffer.concat(chunks),at=Date.now();
-            if(!/no-store|private/i.test(response.headers.get('cache-control')??'')&&!response.headers.has('set-cookie')&&response.headers.get('vary')!=='*')this.remember(key,{body,at,contentType,etag:response.headers.get('etag'),modified:response.headers.get('last-modified')});
+            if(cacheable(response.headers))this.remember(key,{body,at,contentType,etag:response.headers.get('etag'),modified:response.headers.get('last-modified')});
+            else this.forget(key);
             return {document:{body,contentType,receipt:{url:original,finalUrl:url,status:response.status,attempts,revalidated:false,observedAt:at,bytes:size}}};
           });
           this.circuits.delete(host);this.missing.delete(key);
@@ -233,6 +236,9 @@ export class PublicHttpClient {
     while(this.cache.size>32||this.cacheBytes>16_000_000){
       const oldest=this.cache.keys().next().value!;this.cacheBytes-=this.cache.get(oldest)!.body.length;this.cache.delete(oldest);
     }
+  }
+  private forget(key:string){
+    const old=this.cache.get(key);if(old)this.cacheBytes-=old.body.length;this.cache.delete(key);
   }
   cancel(){
     for(const item of this.inflight.values())item.controller.abort(new Error('Поиск остановлен'));

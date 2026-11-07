@@ -4,6 +4,9 @@ const { load } = require("cheerio") as typeof import("cheerio");
 import { codeKey, getCompanyById, type PromoCode } from "./promocodes";
 import { mergeOffers } from "./offer-identity";
 import { merchantAliases } from "./merchant-aliases";
+import { parsePromoDate } from "./promo-date";
+export { parsePromoDate } from "./promo-date";
+import { extractOfficialDates } from "./promo-terms";
 import { foreignMerchantHeading, explicitCode, validCouponToken } from "./promo-quality";
 
 type RecordValue = Record<string, unknown>;
@@ -22,47 +25,6 @@ export function parseMoney(text: string): number | undefined {
   if (!match) return undefined;
   const value = Number(match[0].replace(/[\s\u00a0\u202f]/g, "").replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
-}
-// Date-only values mean a Moscow calendar day, independently of server timezone.
-export function parsePromoDate(value: unknown, endOfDay = false): number | undefined {
-  if (typeof value === "number" || (typeof value === "string" && /^\d{10}(?:\d{3})?$/.test(value))) {
-    const raw = Number(value);
-    const timestamp = raw < 100_000_000_000 ? raw * 1000 : raw;
-    return Number.isFinite(timestamp) && timestamp >= 946684800000 && timestamp < 4102444800000 ? timestamp : undefined;
-  }
-  if (typeof value !== "string") return undefined;
-  let date = value.trim();
-  const englishMonths=['january','february','march','april','may','june','july','august','september','october','november','december'];
-  const dayFirst=date.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(\d{4})$/i);
-  const monthFirst=date.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i);
-  if(dayFirst||monthFirst){
-    const name=(dayFirst?.[2]??monthFirst![1]).toLowerCase(),month=englishMonths.findIndex(item=>item===name||item.slice(0,3)===name);
-    if(month<0)return undefined;
-    date=String((dayFirst??monthFirst)![3])+'-'+String(month+1).padStart(2,'0')+'-'+String(dayFirst?.[1]??monthFirst![2]).padStart(2,'0');
-  }
-  const months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-  const written = date.toLocaleLowerCase("ru").match(/^(\d{1,2})\s+([а-яё]+)\s+(\d{4})(?:\s*г(?:ода|\.)?)?$/);
-  if (written) {
-    const month = months.indexOf(written[2]) + 1;
-    if (!month) return undefined;
-    date = `${written[3]}-${String(month).padStart(2, "0")}-${written[1].padStart(2, "0")}`;
-  }
-  const ru = date.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (ru) date = `${ru[3]}-${ru[2].padStart(2, "0")}-${ru[1].padStart(2, "0")}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const validation = new Date(`${date}T00:00:00Z`);
-    if (!Number.isFinite(validation.getTime()) || validation.toISOString().slice(0, 10) !== date) return undefined;
-    date += endOfDay ? "T23:59:59.999+03:00" : "T00:00:00+03:00";
-  }
-  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(date)) return undefined;
-  const clock = date.match(/T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:Z|[+-]\d{2}:?\d{2})$/i);
-  if (!clock || Number(clock[1]) > 24 || Number(clock[2]) > 59 || Number(clock[3] ?? 0) > 59) return undefined;
-  if (Number(clock[1]) === 24 && (Number(clock[2]) !== 0 || Number(clock[3] ?? 0) !== 0 || /[1-9]/.test(clock[4] ?? ''))) return undefined;
-  const calendar = date.slice(0, 10);
-  const validation = new Date(`${calendar}T00:00:00Z`);
-  if (!Number.isFinite(validation.getTime()) || validation.toISOString().slice(0, 10) !== calendar) return undefined;
-  const timestamp = Date.parse(date);
-  return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 function cleanText(value: string) {
   return load(`<div>${value}</div>`)("div").text().replace(/\s+/g, " ").trim().slice(0, 1500);
@@ -104,8 +66,15 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
     ?? conditionText.match(/(?:заказ[а-яё]*|покупк[а-яё]*|сумм[а-яё]*)(?:\s+на\s+сумму)?\s*(?:от|не\s+менее)\s*([\d\s\u00a0\u202f]+(?:[.,]\d{1,2})?)/i)?.[1];
   const rawEnd = field(record, ["expiresAt", "dateEnd", "endDate", "validThrough", "expirationDate"]);
   const rawStart = field(record, ["startsAt", "startDate", "validFrom"]);
-  const expiresAt = parsePromoDate(rawEnd, true), startsAt = parsePromoDate(rawStart);
+  let written: {startsAt?:number;expiresAt?:number};
+  try {written=extractOfficialDates(conditionText);} catch {
+    if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(code);if(diagnostics.reasons.length<5)diagnostics.reasons.push('Не распознаны сроки в условиях промокода');}
+    return;
+  }
+  const expiresAt = rawEnd===undefined?written.expiresAt:parsePromoDate(rawEnd, true), startsAt = rawStart===undefined?written.startsAt:parsePromoDate(rawStart);
   if (rawEnd !== undefined && expiresAt === undefined || rawStart !== undefined && startsAt === undefined
+    || rawEnd !== undefined && written.expiresAt !== undefined && expiresAt !== written.expiresAt
+    || rawStart !== undefined && written.startsAt !== undefined && startsAt !== written.startsAt
     || startsAt !== undefined && expiresAt !== undefined && startsAt > expiresAt) {
     if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(code);if(diagnostics.reasons.length<5)diagnostics.reasons.push('Неоднозначные или некорректные даты в записи промокода');}
     return;
@@ -126,6 +95,7 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
 /** Parse complete objects, never a character window containing adjacent offers. */
 export function parsePromoCodesFromHtml(html: string, sourceUrl: string, companyId = 0, now = Date.now(), options: {requireMerchant?:boolean;diagnostics?:ParseDiagnostics} = {}): PromoCode[] {
   const $ = load(html);
+  $('template,[hidden],[aria-hidden="true"],[style*="display:none"],[style*="display: none"]').remove();
   const records: RecordValue[] = [];
   const visit = (value: unknown, depth = 0, inheritedMerchant?: string) => {
     if (depth > 30 || records.length >= MAX_RECORDS || !value || typeof value !== "object") return;
@@ -141,22 +111,27 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
   };
   const parseJson = (text: string) => {
     try { visit(JSON.parse(text)); return; } catch { /* JS assignments need balanced object slices. */ }
-    const stack: number[] = [];
+    // Parse the outer valid JSON object first. Extracting inner objects first
+    // drops the merchant owner and can bypass excluded session/account branches.
+    type Slice={start:number;end:number;children:Slice[]};
+    const roots:Slice[]=[],stack:Slice[]=[];
     let quoted = false, escaped = false;
-    for (let i = 0; i < text.length && records.length < MAX_RECORDS; i++) {
+    let objects=0;
+    for (let i = 0; i < text.length && objects<5000; i++) {
       const c = text[i];
       if (quoted) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') quoted = false; continue; }
       if (c === '"') { quoted = true; continue; }
-      if (c === "{") stack.push(i);
+      if (c === "{") {const slice={start:i,end:0,children:[]};(stack.length?stack[stack.length-1].children:roots).push(slice);stack.push(slice);objects++;}
       if (c === "}" && stack.length) {
-        const start = stack.pop()!;
-        if (i - start > 50000) continue;
-        const candidate = text.slice(start, i + 1);
-        if (/"(?:promoCode|promocode|couponCode|coupon_code|promo_code|discountCode|promotionCode|redeemCode)"\s*:/.test(candidate)) {
-          try { visit(JSON.parse(candidate)); } catch { /* Ignore malformed data. */ }
-        }
+        stack.pop()!.end=i+1;
       }
     }
+    const parseSlice=(slice:Slice,depth=0)=>{
+      if(depth>30||records.length>=MAX_RECORDS)return;
+      if(slice.end)try{visit(JSON.parse(text.slice(slice.start,slice.end)));return;}catch{}
+      slice.children.forEach(child=>parseSlice(child,depth+1));
+    };
+    roots.forEach(slice=>parseSlice(slice));
   };
   const scripts = $("script");
   if (scripts.length) scripts.each((_, element) => { parseJson($(element).html() ?? ""); });

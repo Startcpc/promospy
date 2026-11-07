@@ -39,6 +39,7 @@ const CANDIDATE = '[data-promocode],[data-promo-code],[data-coupon-code],[data-c
 /** Read explicit copy/code elements inside one coupon. Never mine arbitrary words. */
 export function extractCouponCards(html: string, url: string, company: Company, now = Date.now(), official = false, diagnostics?:ParseDiagnostics): PromoCode[] {
   const $ = load(merchantContent(html));
+  $('template,[hidden],[aria-hidden="true"],[style*="display:none"],[style*="display: none"]').remove();
   const title = $('h1').first().text() || $('title').text();
   if (!official && !matchesMerchant(title,company)) return [];
   $('[class*="related"],[class*="similar"],aside,nav,footer').remove();
@@ -88,12 +89,14 @@ export function extractCouponCards(html: string, url: string, company: Company, 
     const terms = clean.text().replace(/\s+/g,' ').trim();
     const badge=card.find('.status,.coupon-status,[data-status]').text().trim();
     const explicitlyEnded=card.is('.expired,.coupon-expired,[data-expired="true"]')||/^(?:expired|ended|ист[её]к|заверш[её]н)$/i.test(badge)||/срок\s+(?:действия\s+)?ист[её]к|акция\s+завершена|(?:offer|coupon|promotion)\s+(?:has\s+)?expired/i.test(terms);
-    const attributeDate = item.attr('data-expires-at') ?? card.attr('data-expires-at') ?? card.find('time[datetime]').attr('datetime');
-    const writtenDate = terms.match(/(?:до|по|действует до)\s+(\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\s+[а-яё]+\s+\d{4})/i)?.[1];
-    const expiresAt = parsePromoDate(attributeDate ?? writtenDate,true);
+    // A card often has datePublished/dateModified as well as a deadline.
+    // An unlabeled <time> is not evidence that the coupon expires that day.
+    const expiryTime=card.find('time[itemprop="validThrough"][datetime],time[itemprop="endDate"][datetime],time.expires[datetime],time.expiry[datetime],time[data-expires-at]').first();
+    const attributeDate = item.attr('data-expires-at') ?? card.attr('data-expires-at') ?? expiryTime.attr('data-expires-at') ?? expiryTime.attr('datetime');
+    const expiresAt = parsePromoDate(attributeDate,true);
     const attributeStart = item.attr('data-starts-at') ?? card.attr('data-starts-at');
     const startsAt = parsePromoDate(attributeStart);
-    if ((attributeDate !== undefined||writtenDate!==undefined) && expiresAt === undefined || attributeStart !== undefined && startsAt === undefined
+    if (attributeDate !== undefined && expiresAt === undefined || attributeStart !== undefined && startsAt === undefined
       || startsAt !== undefined && expiresAt !== undefined && startsAt > expiresAt) {
       if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(raw);if(diagnostics.reasons.length<5)diagnostics.reasons.push('Не распознаны даты одной из карточек');}
       return;

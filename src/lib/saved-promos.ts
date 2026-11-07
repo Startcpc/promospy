@@ -11,7 +11,8 @@ export function savedOfferMatches(item:SavedPromo,offer:Pick<PromoCode,"id"|"com
   if(item.companyId!==offer.companyId||item.code!==offer.code)return false;
   if(!item.snapshot||!Array.isArray(offer.conditions)||typeof offer.discount!=='string')return item.id===offer.id;
   if(item.id!==offer.id){
-    for(const key of ['minOrder','startsAt','expiresAt','maxDiscount','channel'] as const)if(offer[key]!==undefined&&item.snapshot[key]===undefined)return false;
+    for(const key of ['minOrder','startsAt','expiresAt','maxDiscount','channel','appOnly'] as const)if(offer[key]!==undefined&&item.snapshot[key]===undefined)return false;
+    for(const key of ['regions','categories'] as const)if(offer[key]?.length&&!item.snapshot[key]?.length)return false;
     if(/\d/.test(offer.discount)&&!/\d/.test(item.snapshot.discount))return false;
   }
   return !offerConflict(item.snapshot,offer as PromoCode);

@@ -1,4 +1,4 @@
-export const ENGINE_VERSION=1;
+export const ENGINE_VERSION=2;
 export function integerSetting(name: string, fallback: number, min: number, max: number, env = process.env) {
   const raw = env[name];
   if (!raw || !/^\d+$/.test(raw)) return fallback;
