@@ -10,7 +10,7 @@ import { parseSavedPromos, resolveSavedOffer, savedOfferMatches } from '../src/l
 import { needsRendering, BrowserReader } from '../src/lib/browser-reader';
 const company=getCompanyById(54)!;
 const card=(code:string,terms='Заказ от 1000 рублей')=>'<h1>Промокоды ВкусВилл</h1><article><h3>Скидка 200 рублей</h3><p>Промокод: '+code+'</p><p>'+terms+'</p></article>';
-const third='https://promokodus.com/campaigns/vkusvill-new';
+const third='https://promocodex.ru/promocodes/vkusvill-new/';
 test('DuckDuckGo independently discovers a source when Bing and known pages fail',async()=>{
   const seen:string[]=[];
   const report=await searchMerchant(company,AbortSignal.timeout(3000),async url=>{

@@ -62,7 +62,7 @@ test('Burger King proceeds to additional public sources after 403, 404 and a bro
   if(url.endsWith('/robots.txt'))return new Response('',{status:401});
   if(url==='https://promokod.vbr.ru/shops/burger-king/')return new Response('<h1>Промокоды Burger King</h1><article><h3>Тестовая скидка 20%</h3><p>Промокод: SOURCEBK20</p></article>',{headers:{'content-type':'text/html'}});
   if(url.includes('burgerkingrus.ru'))return new Response('forbidden',{status:403});
-  if(url.includes('promokodus.com'))return new Response('<title>Just a moment</title>',{headers:{'content-type':'text/html'}});
+  if(url.includes('getcashback.ru'))return new Response('<title>Just a moment</title>',{headers:{'content-type':'text/html'}});
   return new Response('missing',{status:404});
  });
  const report=await searchMerchant(getCompanyById(5)!,AbortSignal.timeout(3000),async(url,allowed,signal)=>(await http.readText(url,allowed,signal)).text);

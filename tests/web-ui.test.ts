@@ -293,7 +293,7 @@ test('Burger King source failures do not prevent a public fallback from appearin
   for(let i=0;i<100&&await page.getByRole('button',{name:'Обновить',exact:true}).isDisabled();i++)await page.waitForTimeout(100);
   await page.getByText('Подробнее об обновлении',{exact:true}).click();
   await page.getByText('PromoSpy '+APP_VERSION,{exact:true}).waitFor();
-  assert.ok(await page.getByText('Сайт отклонил запрос',{exact:false}).count()>0);
+  assert.ok(await page.getByText('Пропущен:',{exact:false}).count()>0);
   assert.ok(await page.getByText('HTTP 403',{exact:false}).count()>0);
   const source='https://promokodi.ru/store/burger-king/';
   const before=readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length;assert.ok(before>0);

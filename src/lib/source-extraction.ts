@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import type { Company } from './companies';
 import { merchantAliases as names, normalizeMerchantName, isSeparateMerchantService } from './merchant-aliases';
-import { foreignMerchantHeading, explicitCode } from './promo-quality';
+import { foreignMerchantHeading, explicitCode, validCouponToken } from './promo-quality';
 import { codeKey, type PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, parsePromoDate, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
@@ -20,6 +20,12 @@ export function isChallengePage(html: string) {
   if (/промокод|купон|coupon/i.test(heading) && $('article,.coupon,[data-coupon],.js-vv21-promocode-item,.t-rec').length) return false;
   return body.length < 1800 && /(?:подтвердите|проверьте|confirm|verify).{0,60}(?:не бот|не робот|not a robot|human)|checking your browser|enable javascript and cookies to continue/i.test(body);
 }
+/** A login button in a shop header is normal; an explicit code access wall is not. */
+export function isLoginWall(html:string){
+  const $=load(html);$('script,style,noscript,nav,footer').remove();
+  const heading=$('title,h1').text().replace(/\s+/g,' ');
+  return /(?:войдите|зарегистрируйтесь|авторизуйтесь).{0,70}(?:увидеть|просмотр|доступ|получить).{0,40}(?:промокод|купон)|(?:промокоды|купоны).{0,40}(?:доступны|видны)\s+только\s+(?:после\s+входа|подписчикам|зарегистрированным)|sign in to (?:view|reveal|access).{0,30}(?:codes|coupons)/i.test(heading);
+}
 export function explicitEmpty(html: string) {
   const $ = load(html); $('script,style,noscript,template,[hidden],[aria-hidden="true"],[style*="display:none"],[style*="display: none"]').remove();
   return /(?:активных|действующих|доступных)\s+(?:промокодов|купонов)\s+(?:пока\s+)?нет|промокоды\s+не\s+найдены/i.test($('main').length ? $('main').text() : $('body').text());
@@ -27,6 +33,7 @@ export function explicitEmpty(html: string) {
 export function merchantContent(html: string) {
   const $ = load(html);
   $('[class*="related"],[class*="similar"],aside,nav,footer,template').remove();
+  $('[data-requires-login="true"],[data-premium="true"],[data-locked="true"],.coupon-locked,.coupon-premium').remove();
   const elements = $('body *').toArray();
   const cutoff = elements.findIndex(el => $(el).is('h2,h3,h4') && /^(?:похожие\s+(?:промокоды|купоны|магазины)|другие магазины|рекомендуемые магазины)/i.test($(el).text().trim()));
   if (cutoff >= 0) for (const el of elements.slice(cutoff)) $(el).remove();
@@ -36,6 +43,7 @@ const CODE = /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u;
 const CARD = 'article,[data-coupon],[data-offer],.coupon,.promocode,.offer,[class*="coupon-item"],[class*="coupon_item"],[class*="offer-item"],[class*="promo-item"]';
 const EXPLICIT = '[data-promocode],[data-promo-code],[data-coupon-code],[data-clipboard-text],[data-code],input[readonly][value]';
 const CANDIDATE = '[data-promocode],[data-promo-code],[data-coupon-code],[data-clipboard-text],[data-code],code,input[readonly],input[name*="code"],[class*="code"],[class*="Code"]';
+const ENDED_SECTION=/купоны уже закончились|ист[её]кшие|заверш[её]нные акции|промокоды с ист[её]кшим|(?:купоны|промокоды).{0,100}доступные ранее|expired\s+(?:coupons|codes|offers)|ended\s+(?:promotions|offers)/i;
 /** Read explicit copy/code elements inside one coupon. Never mine arbitrary words. */
 export function extractCouponCards(html: string, url: string, company: Company, now = Date.now(), official = false, diagnostics?:ParseDiagnostics): PromoCode[] {
   const $ = load(merchantContent(html));
@@ -46,7 +54,7 @@ export function extractCouponCards(html: string, url: string, company: Company, 
   const elements = $('body *').toArray();
   const positions = new Map(elements.map((el,index) => [el,index]));
   const related = $('h2,h3,h4').toArray().find(el => /^(?:похожие\s+(?:промокоды|купоны|магазины)|другие магазины|рекомендуемые магазины)/i.test($(el).text().trim()));
-  const ended = $('h2,h3,h4').toArray().find(el => /купоны уже закончились|ист[её]кшие|заверш[её]нные акции|промокоды с ист[её]кшим|(?:купоны|промокоды).{0,100}доступные ранее|expired\s+(?:coupons|codes|offers)|ended\s+(?:promotions|offers)/i.test($(el).text()));
+  const ended = $('h2,h3,h4').toArray().find(el => ENDED_SECTION.test($(el).text()));
   const result: PromoCode[] = [];
   $(CARD).each((_,el) => {
     const card = $(el);
@@ -109,4 +117,37 @@ export function extractCouponCards(html: string, url: string, company: Company, 
     }
   });
   return mergePromoCodes(result);
+}
+
+/** Explicit code columns are public evidence; unrelated price/statistics tables are not. */
+export function extractCouponTables(html:string,url:string,company:Company,now=Date.now(),official=false,diagnostics?:ParseDiagnostics):PromoCode[]{
+  const $=load(merchantContent(html));
+  $('template,[hidden],[aria-hidden="true"],[style*="display:none"],[style*="display: none"]').remove();
+  if(!official&&!matchesMerchant($('h1').first().text()||$('title').text(),company))return [];
+  const elements=$('body *').toArray(),positions=new Map(elements.map((el,index)=>[el,index]));
+  const ended=$('h2,h3,h4').toArray().find(el=>ENDED_SECTION.test($(el).text()));
+  const offers:PromoCode[]=[];
+  $('table').slice(0,20).each((_,table)=>{
+    const rows=$(table).find('tr').filter((_,row)=>$(row).closest('table')[0]===table).slice(0,201);
+    const header=rows.first().children('th,td').toArray().map(cell=>$(cell).text().replace(/\s+/g,' ').trim());
+    const codeColumn=header.findIndex(text=>/^(?:промокод|код(?:\s+(?:купона|скидки))?|promo\s*code|coupon\s*code)$/i.test(text));
+    const termsColumn=header.findIndex(text=>/^(?:условия(?: акции)?|описание|предложение|скидка|выгода|discount|offer|description)$/i.test(text));
+    const expiryColumn=header.findIndex(text=>/^(?:срок(?: действия)?|действует(?: до)?|дата окончания|окончание|expiry|expires(?: at)?|valid until)$/i.test(text));
+    if(codeColumn<0||termsColumn<0)return;
+    rows.slice(1).each((_,row)=>{
+      if(offers.length>=100)return;
+      const cells=$(row).children('td');
+      if(cells.length!==header.length||cells.filter('[colspan],[rowspan]').length||$(row).find('table').length)return;
+      const cell=cells.eq(codeColumn),raw=codeKey(cell.text().trim());
+      if(!validCouponToken(raw)||/masked|code-tail|code-part/i.test(cell.attr('class')??'')||cell.find('[class*="mask"],[class*="tail"]').length)return;
+      const terms=cells.eq(termsColumn).text().replace(/\s+/g,' ').trim();
+      if(!terms||terms.length>1500||foreignMerchantHeading(terms,company.id))return;
+      const deadline=expiryColumn<0?undefined:cells.eq(expiryColumn).text().replace(/\s+/g,' ').trim().replace(/^(?:до|по)\s+/i,'');
+      const expiresAt=deadline&&!/^(?:—|-|бессрочно|до отмены|не указан[оа]?|без срока)$/i.test(deadline)?deadline:undefined;
+      const expired=$(row).is('.expired,[data-expired="true"]')||!!(ended&&(positions.get(row)??0)>(positions.get(ended)??Infinity));
+      const parsed=parsePromoCodesFromHtml(JSON.stringify([{promoCode:raw,title:terms,conditions:[terms],expiresAt,expired}]),url,company.id,now,{diagnostics});
+      offers.push(...parsed);
+    });
+  });
+  return mergePromoCodes(offers);
 }

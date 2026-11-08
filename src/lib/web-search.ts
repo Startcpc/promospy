@@ -12,8 +12,9 @@ import { sourceIdentity } from './promo-validation';
 import type { PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
 import { extractOfficialDates } from './promo-terms';
-import { extractCouponCards, isChallengePage, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
+import { extractCouponCards, extractCouponTables, isChallengePage, isLoginWall, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
 import { isSeparateMerchantService } from './merchant-aliases';
+import { SourceAvailability } from './source-availability';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
 export { SEARCH_DOMAINS } from './source-adapters';
@@ -22,12 +23,12 @@ export type SearchReport = {
   codes: PromoCode[]; targetSites: number; discoveredSites: number;
   pagesRead: number; pagesFailed: number; visited: string[]; warnings: string[];
   phase?: 'official' | 'sources' | 'complete'; officialPagesRead?: number;
-  pagesBlocked?: number; parseFailures?: number; couponsFound?:number; officialCoupons?:number;
+  pagesBlocked?: number; pagesSkipped?:number; parseFailures?: number; couponsFound?:number; officialCoupons?:number;
   issues?: {url:string;reason:string}[];
   parsedUrls?: string[];
   discovery?: DiscoveryResult[];
   budget?: {pages:number;pagesUsed:number;discoveryRequests:number;discoveryUsed:number};
-  sourceResults?: {url:string;official:boolean;outcome:'codes'|'empty'|'index'|'unrecognized'|'blocked'|'error';count:number;message?:string;
+  sourceResults?: {url:string;official:boolean;outcome:'codes'|'empty'|'index'|'unrecognized'|'blocked'|'skipped'|'error';count:number;message?:string;
     httpStatus?:number;attempts?:number;finalUrl?:string;failureUrl?:string;errorCode?:string;retryAt?:number;rendering?:string;partial?:boolean}[];
 };
 export type SearchOptions={previousUrls?:string[];pageBudget?:number;discoveryBudget?:number};
@@ -39,6 +40,7 @@ export async function readPublicPage(url:string,domains:string[],signal:AbortSig
   const path=new URL(url).pathname;
   return (await publicHttp.readText(url,domains,signal,/\/robots\.txt$/.test(path)?{kind:'robots',robots:false}:/\.xml(?:\.gz)?$/.test(path)?{kind:'sitemap'}:{})).text;
 }
+const availabilityByReader=new WeakMap<typeof readPublicPage,SourceAvailability>();
 export function parseDiscovery(xml:string,domains:string[]){return parseFeedLinks(xml,domains);}
 export function parseMerchantPage(html: string, url: string, company: Company, now = Date.now(), official = false, diagnostics:ParseDiagnostics={incomplete:false,reasons:[]}): PromoCode[] {
   if(/^\s*[\[{]/.test(html)){try{const feed=JSON.parse(html);if(typeof feed.version==='string'&&feed.version.startsWith('https://jsonfeed.org/'))return parsePublicFeed(html,url,company,now,diagnostics);}catch{}return parsePromoCodesFromHtml(html,url,company.id,now,{requireMerchant:!official,diagnostics});}
@@ -49,7 +51,7 @@ export function parseMerchantPage(html: string, url: string, company: Company, n
   if (!official && !ownHost && !matchesMerchant($('h1').first().text() || $('title').text(),company)) return [];
   const structuredDiagnostics:ParseDiagnostics={incomplete:false,reasons:[]},cardDiagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
   const structured = parsePromoCodesFromHtml(scoped,url,company.id,now,{diagnostics:structuredDiagnostics});
-  const cards = extractCouponCards(scoped,url,company,now,official || ownHost,cardDiagnostics).map(card => {
+  const cards = [...extractCouponCards(scoped,url,company,now,official || ownHost,cardDiagnostics),...extractCouponTables(scoped,url,company,now,official || ownHost,cardDiagnostics)].map(card => {
     const metadata = structured.find(item => item.code === card.code && item.description === card.description);
     if (!metadata) return card;
     const expiresAt = card.expiresAt ?? metadata.expiresAt;
@@ -86,8 +88,10 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
   const config=searchConfig(),pageLimit=Math.min(50,Math.max(6,options.pageBudget??config.pages));
   const budget=new DiscoveryBudget(Math.min(20,Math.max(3,options.discoveryBudget??config.discoveryRequests)));
   const initial=officialUrls(company),officialDomains=merchantDomains(company),domains=[...new Set([...officialDomains,...SEARCH_DOMAINS])];
-  const report:SearchReport={engineVersion:ENGINE_VERSION,codes:[],targetSites:domains.length,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0,pagesBlocked:0,parseFailures:0,discovery:budget.results};
+  const availability=availabilityByReader.get(read)??new SourceAvailability();availabilityByReader.set(read,availability);
+  const report:SearchReport={engineVersion:ENGINE_VERSION,codes:[],targetSites:domains.length,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0,pagesBlocked:0,pagesSkipped:0,parseFailures:0,discovery:budget.results};
   const attempted=new Map<string,string>(),candidates=new Map<string,string>();
+  const skipped=new Set<string>();
   const add=(urls:string[])=>{for(const url of urls)if(safeSource(url,domains)&&candidates.size<150)candidates.set(sourceIdentity(url),url);};
   const publish=()=>{
     report.codes=mergeCodes(report.codes,company.id);report.couponsFound=report.codes.length;report.officialCoupons=report.codes.filter(code=>code.status==='official').length;
@@ -98,7 +102,9 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
   const feeds=new Set<string>();
   const visit=async(url:string,official:boolean,stageSignal:AbortSignal):Promise<string|null>=>{
     const identity=sourceIdentity(url),limit=report.phase==='official'?pageLimit-3:pageLimit;
-    if(attempted.has(identity)||attempted.size>=limit||stageSignal.aborted||!safeSource(url,official?officialDomains:domains))return null;
+    if(attempted.has(identity)||skipped.has(identity)||attempted.size>=limit||attempted.size+skipped.size>=100||stageSignal.aborted||!safeSource(url,official?officialDomains:domains))return null;
+    const pause=availability.get(url);
+    if(pause){skipped.add(identity);report.pagesSkipped!++;report.sourceResults!.push({url,official,outcome:'skipped',count:0,...pause});publish();return null;}
     attempted.set(identity,url);add([url]);
     let fetched=false,receipt:FetchReceipt|undefined,actualUrl=url,rendering:string|undefined;
     try{
@@ -107,6 +113,7 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
       else html=await read(url,official?officialDomains:domains,stageSignal);
       const actualOfficial=official||officialDomains.includes(host(actualUrl));
       if(isChallengePage(html))throw new SourceError('Сайт запросил проверку браузера','restricted',actualUrl,receipt?.status,undefined,receipt?.attempts);
+      if(isLoginWall(html))throw new SourceError('Для просмотра кодов требуется вход или подписка','restricted',actualUrl,undefined,undefined,receipt?.attempts);
       fetched=true;report.pagesRead++;report.visited.push(url);if(actualOfficial)report.officialPagesRead!++;
       const diagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
       const parse=()=>{
@@ -135,6 +142,7 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
       report.codes.push(...codes);publish();return html;
     }catch(error){
       const problem=error instanceof SourceError?error:undefined;
+      if(problem)availability.remember(url,problem);
       const blocked=problem&&['restricted','robots','rate_limit'].includes(problem.code)||problem?.code==='circuit'&&[401,403,429].includes(problem.status??0);
       if(!fetched)report.pagesFailed++;
       if(blocked)report.pagesBlocked!++;else if(fetched)report.parseFailures!++;
@@ -152,7 +160,7 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
   const history=(options.previousUrls??[]).filter(url=>safeSource(url,domains)).slice(0,16);add(history);
   for(const url of history)if(officialDomains.includes(host(url)))linked.add(url);
   await Promise.all([...linked].slice(0,4).map(url=>visit(url,true,officialSignal)));
-  if(!officialSignal.aborted){
+  if(!officialSignal.aborted&&initial.some(url=>!availability.get(url))){
     let hints:string[]=[];
     if(read===readPublicPage)try{hints=await publicHttp.sitemapHints(initial[0],officialDomains,officialSignal);}catch{}
     const sitemapPages=await discoverSitemaps(initial,hints,officialDomains,budget,officialSignal,read);add(sitemapPages);
@@ -161,12 +169,12 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
   }
   signal.throwIfAborted();report.phase='sources';publish();
   const known=publicSources.seedUrls(company);add(known);add(history);
-  const direct=[...new Set([...known,...history.filter(url=>!officialDomains.includes(host(url)))])];
+  const direct=[...new Set([...history.filter(url=>!officialDomains.includes(host(url))),...known])];
   let directCursor=0;
   const directJob=Promise.all(Array.from({length:3},async()=>{while(directCursor<direct.length&&!signal.aborted)await visit(direct[directCursor++],false,signal);}));
   await discoverIndexes(company,SEARCH_DOMAINS,budget,signal,read,urls=>{add(urls);publish();});
   await directJob;
-  const remaining=[...candidates.values()].filter(url=>!attempted.has(sourceIdentity(url))).slice(0,Math.max(0,pageLimit-attempted.size));
+  const remaining=[...candidates.values()].filter(url=>!attempted.has(sourceIdentity(url))&&!skipped.has(sourceIdentity(url))).slice(0,Math.max(0,pageLimit-attempted.size));
   let cursor=0;
   await Promise.all(Array.from({length:3},async()=>{while(cursor<remaining.length&&!signal.aborted){const url=remaining[cursor++];await visit(url,officialDomains.includes(host(url)),signal);}}));
   for(const feed of [...feeds].slice(0,3))if(!signal.aborted)await visit(feed,officialDomains.includes(host(feed)),signal);

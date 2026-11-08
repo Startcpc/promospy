@@ -40,8 +40,8 @@ export function validReport(value: unknown): value is SearchReport {
   if (value.phase !== undefined && !['official','sources','complete'].includes(value.phase as string)) return false;
   if (value.parsedUrls !== undefined && (!strings(value.parsedUrls,100,2048) || !value.parsedUrls.every(validSourceUrl))) return false;
   if (value.issues !== undefined && (!Array.isArray(value.issues) || value.issues.length > 100 || !value.issues.every(issue => record(issue) && validSourceUrl(issue.url) && typeof issue.reason === 'string' && issue.reason.length < 2000))) return false;
-  if (value.sourceResults !== undefined && (!Array.isArray(value.sourceResults) || value.sourceResults.length > 100 || !value.sourceResults.every(source => record(source) && validSourceUrl(source.url) && typeof source.official === 'boolean' && finite(source.count) && ['codes','empty','index','unrecognized','blocked','error'].includes(source.outcome as string) && (source.message === undefined || typeof source.message === 'string')))) return false;
-  for(const key of ['pagesBlocked','parseFailures','officialPagesRead','couponsFound','officialCoupons'])if(value[key]!==undefined&&(!finite(value[key])||!Number.isInteger(value[key])))return false;
+  if (value.sourceResults !== undefined && (!Array.isArray(value.sourceResults) || value.sourceResults.length > 100 || !value.sourceResults.every(source => record(source) && validSourceUrl(source.url) && typeof source.official === 'boolean' && finite(source.count) && ['codes','empty','index','unrecognized','blocked','skipped','error'].includes(source.outcome as string) && (source.message === undefined || typeof source.message === 'string')))) return false;
+  for(const key of ['pagesBlocked','pagesSkipped','parseFailures','officialPagesRead','couponsFound','officialCoupons'])if(value[key]!==undefined&&(!finite(value[key])||!Number.isInteger(value[key])))return false;
   if(Array.isArray(value.sourceResults))for(const source of value.sourceResults){
     if(!record(source))return false;
     for(const key of ['finalUrl','failureUrl'])if(source[key]!==undefined&&!validSourceUrl(source[key]))return false;

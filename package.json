@@ -1,6 +1,6 @@
 {
   "name": "promospy",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --import ./scripts/register-ts.mjs --test --experimental-test-isolation=none tests/saved-promos.test.ts tests/request-origin.test.ts tests/web-search.test.ts tests/search-store.test.ts tests/source-extraction.test.ts tests/browser-request.test.ts tests/search-cache.test.ts tests/engine-regressions.test.ts tests/public-http.test.ts tests/discovery-engine.test.ts tests/source-ai.test.ts tests/search-lifecycle.test.ts tests/acceptance-regressions.test.ts tests/source-http-failures.test.ts",
+    "test": "node --import ./scripts/register-ts.mjs --test --experimental-test-isolation=none tests/saved-promos.test.ts tests/request-origin.test.ts tests/web-search.test.ts tests/search-store.test.ts tests/source-extraction.test.ts tests/browser-request.test.ts tests/search-cache.test.ts tests/engine-regressions.test.ts tests/public-http.test.ts tests/discovery-engine.test.ts tests/source-ai.test.ts tests/search-lifecycle.test.ts tests/acceptance-regressions.test.ts tests/source-http-failures.test.ts tests/public-catalogues.test.ts",
     "test:search": "node --import ./scripts/register-ts.mjs scripts/test-search.ts",
     "test:smoke": "node --import ./scripts/register-ts.mjs --test --experimental-test-isolation=none tests/web-ui.test.ts tests/browser-reader.test.ts",
     "db:backup": "node --env-file-if-exists=.env scripts/backup-db.mjs",

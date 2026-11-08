@@ -13,6 +13,7 @@ type RecordValue = Record<string, unknown>;
 export type ParseDiagnostics={incomplete:boolean;reasons:string[];rejectedCodes?:string[]};
 const CODE_FIELDS = ["promoCode", "promocode", "couponCode", "coupon_code", "promo_code", "discountCode", "promotionCode", "redeemCode"];
 const MAX_RECORDS = 1000;
+const privateRecord=(record:RecordValue)=>record.requiresLogin===true||record.requiresRegistration===true||record.isPremium===true||record.locked===true||record.public===false;
 function field(record: RecordValue, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = record[key];
@@ -39,6 +40,7 @@ function maximumDiscount(record:RecordValue,terms:string){
   return limits.length===1?limits[0]:undefined;
 }
 function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string, now: number, requireMerchant = false, diagnostics?:ParseDiagnostics): PromoCode | undefined {
+  if(privateRecord(record))return;
   const company = getCompanyById(companyId);
   const shop=record.shop??record.seller??record.merchant;
   const nestedShop = shop && typeof shop === "object" ? shop as RecordValue : undefined;
@@ -110,6 +112,7 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
     if (depth > 30 || records.length >= MAX_RECORDS || !value || typeof value !== "object") return;
     if (Array.isArray(value)) { value.forEach((item) => visit(item, depth + 1, inheritedMerchant)); return; }
     const record = value as RecordValue;
+    if(privateRecord(record))return;
     const owner=record.shop??record.seller??record.merchant;
     const merchant=field(record,["merchantName","shopName","storeName","companyName"])??(owner&&typeof owner==="object"?field(owner as RecordValue,["title","name"]):undefined)??inheritedMerchant;
     const identifier=record.identifier && typeof record.identifier==="object" ? record.identifier as RecordValue : undefined;
