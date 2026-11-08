@@ -1,14 +1,14 @@
 import { createRequire } from 'node:module';
 import type { Company } from './companies';
-import { merchantAliases as names } from './merchant-aliases';
+import { merchantAliases as names, normalizeMerchantName, isSeparateMerchantService } from './merchant-aliases';
 import { foreignMerchantHeading, explicitCode } from './promo-quality';
 import { codeKey, type PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, parsePromoDate, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
-const normalize = (value: string) => value.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/[^\p{L}\p{N}]/gu,'');
 export function matchesMerchant(title: string, company: Company) {
-  const value = normalize(title);
-  return [company.name,...names[company.id] ?? []].some(name => value.includes(normalize(name)));
+  if(isSeparateMerchantService(title,company.id))return false;
+  const value = normalizeMerchantName(title);
+  return [company.name,...names[company.id] ?? []].some(name => value.includes(normalizeMerchantName(name)));
 }
 export function isChallengePage(html: string) {
   const $ = load(html);

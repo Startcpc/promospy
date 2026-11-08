@@ -1,6 +1,6 @@
 import type { PromoCode } from './promocodes';
 import { companies } from './companies';
-import { merchantAliases } from './merchant-aliases';
+import { merchantAliases, isSeparateMerchantService } from './merchant-aliases';
 const compact=(text:string)=>text.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/[^\p{L}\p{N}]/gu,'');
 export function explicitCode(text:string){
   return text.match(/(?:(?:промокод|код купона|код скидки|promo\s*code|coupon\s*code)\s*[:：]|(?:используйте|введите|примените|use|enter)\s+(?:промокод|код|code)\s*[:：]?)\s*["'«]?([\p{L}\p{N}][\p{L}\p{N}_-]{1,63})(?![\p{L}\p{N}_-])/iu)?.[1];
@@ -9,6 +9,7 @@ export function validCouponToken(value:string){
   return /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value)&&!/^[78]\d{10}$/.test(value)&&!/^(?:coupon|promocode|промокод|скопировать|copy|code|например|название|ваш|любой)$/i.test(value);
 }
 export function foreignMerchantHeading(heading:string,companyId:number){
+  if(isSeparateMerchantService(heading,companyId))return true;
   const current=companies.find(company=>company.id===companyId);
   const normalized=compact(heading);
   if(current&&[current.name,...merchantAliases[companyId]??[]].some(name=>normalized.includes(compact(name))))return false;

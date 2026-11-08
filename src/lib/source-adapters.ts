@@ -3,7 +3,15 @@ import { PUBLIC_OFFICIAL_URLS, hasPublicOfficialMarkup, parsePublicOfficial } fr
 import { sourceHost } from './fetch-policy';
 import type { PromoCode } from './promocodes';
 export const SEARCH_DOMAINS = ['promokod.pikabu.ru','promokodi.ru','promokodus.com','promkod.ru','promokod.vbr.ru','berikod.ru','promokod.ru','pepper.ru','skidkidor.ru','kupon.ru','biglion.ru','gilmon.ru','kuponator.ru','kuponation.ru','picodi.com','megabonus.com','backit.me','letyshops.com','kp.ru','aif.ru','banki.ru','sravni.ru','t-j.ru','dtf.ru','vc.ru','ixbt.com','otzovik.com','getcashback.ru','zen.yandex.ru'];
-const slugs:Record<number,string>={5:'burger-king',54:'vkusvill',102:'vkusno-i-tochka',201:'magnit',202:'pyaterochka',203:'yandex-lavka',204:'yandex-market',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
+// Slugs verified against live site catalogues (2026-11): pikabu uses its own
+// naming (e.g. /shops/magnit is 404, the delivery page is magnit-info),
+// promokodi.ru redirects some generic slugs to unrelated stores (/store/ozon
+// goes to Ozon Bank, /store/5ka to "5 карманов"), promokodus.com keeps the
+// plain merchant names. One shared map pointed several seeds at 404 pages.
+const pikabuSlugs:Record<number,string>={5:'burgerkingrus',54:'vkusvill',102:'vkusnoitochka',201:'magnit-info',202:'5ka',203:'lavka-yandex',204:'market-yandex',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
+const promokodiSlugs:Record<number,string>={5:'burger-king',54:'vkusvill',102:'vkusno-i-tochka',201:'magnit-dostavka',202:'pyatyorochka',203:'yandex-lavka',204:'yandeks-market',205:'perekrestok',206:'lenta',207:'promokod-wildberries',208:'ozon-ru',301:'tanuki',302:'kroshka-kartoshka'};
+const promokodusSlugs:Record<number,string>={5:'burger-king',102:'vkusno-i-tochka',202:'pyaterochka',203:'yandex-lavka',204:'yandex-market',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
+const cashbackSlugs:Record<number,string>={54:'vkusvill',201:'magnit'};
 export type SourceAdapter={
   id:string;
   officialUrls:(company:Company)=>string[];
@@ -29,10 +37,15 @@ export const publicSources:SourceAdapter={
     return [...new Set([primary,company.website].filter((url):url is string=>!!url))];
   },
   seedUrls(company){
-    const slug=slugs[company.id];
-    if(!slug)return [];
-    return ['https://promokod.pikabu.ru/shops/'+slug,'https://promokodi.ru/store/'+slug+'/',
-      [54,201].includes(company.id)?'https://getcashback.ru/promocodes/'+slug+'/':'https://promokodus.com/campaigns/'+slug];
+    const pikabu=pikabuSlugs[company.id],promokodi=promokodiSlugs[company.id];
+    if(!pikabu&&!promokodi)return [];
+    const seeds:string[]=[];
+    if(pikabu)seeds.push('https://promokod.pikabu.ru/shops/'+pikabu);
+    if(promokodi)seeds.push('https://promokodi.ru/store/'+promokodi+'/');
+    const cashback=cashbackSlugs[company.id],promokodus=promokodusSlugs[company.id];
+    if(cashback)seeds.push('https://getcashback.ru/promocodes/'+cashback+'/');
+    else if(promokodus)seeds.push('https://promokodus.com/campaigns/'+promokodus);
+    return seeds;
   },
 };
 export function officialDomains(company:Company){

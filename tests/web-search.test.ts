@@ -105,3 +105,18 @@ test('32: an empty message on another merchant page cannot clear this merchant s
  const thirdParty=report.sourceResults!.filter(source=>!source.official);
  assert.ok(thirdParty.every(source=>source.outcome==='unrecognized'));
 });
+test('33: known coupon pages use per-site store slugs verified against live catalogues',async()=>{
+ const {publicSources}=await import('../src/lib/source-adapters');
+ const expected:Record<number,string[]>={
+  54:['https://promokod.pikabu.ru/shops/vkusvill','https://promokodi.ru/store/vkusvill/','https://getcashback.ru/promocodes/vkusvill/'],
+  201:['https://promokod.pikabu.ru/shops/magnit-info','https://promokodi.ru/store/magnit-dostavka/','https://getcashback.ru/promocodes/magnit/'],
+  202:['https://promokod.pikabu.ru/shops/5ka','https://promokodi.ru/store/pyatyorochka/','https://promokodus.com/campaigns/pyaterochka'],
+  204:['https://promokod.pikabu.ru/shops/market-yandex','https://promokodi.ru/store/yandeks-market/','https://promokodus.com/campaigns/yandex-market'],
+  207:['https://promokod.pikabu.ru/shops/wildberries','https://promokodi.ru/store/promokod-wildberries/','https://promokodus.com/campaigns/wildberries'],
+  208:['https://promokod.pikabu.ru/shops/ozon','https://promokodi.ru/store/ozon-ru/','https://promokodus.com/campaigns/ozon'],
+ };
+ for(const [id,seeds]of Object.entries(expected)){
+  const merchant=getCompanyById(Number(id))!;
+  assert.deepEqual(publicSources.seedUrls(merchant),seeds,`seed URLs для ${merchant.name}`);
+ }
+});

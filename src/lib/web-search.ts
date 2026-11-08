@@ -13,6 +13,7 @@ import type { PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
 import { extractOfficialDates } from './promo-terms';
 import { extractCouponCards, isChallengePage, matchesMerchant, explicitEmpty, merchantContent } from './source-extraction';
+import { isSeparateMerchantService } from './merchant-aliases';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
 export { SEARCH_DOMAINS } from './source-adapters';
@@ -43,6 +44,7 @@ export function parseMerchantPage(html: string, url: string, company: Company, n
   if(/^\s*[\[{]/.test(html)){try{const feed=JSON.parse(html);if(typeof feed.version==='string'&&feed.version.startsWith('https://jsonfeed.org/'))return parsePublicFeed(html,url,company,now,diagnostics);}catch{}return parsePromoCodesFromHtml(html,url,company.id,now,{requireMerchant:!official,diagnostics});}
   if(/<(?:rss|feed)(?:\s|>)/i.test(html))return parsePublicFeed(html,url,company,now,diagnostics);
   const scoped = merchantContent(html), $ = load(scoped);
+  if($('title,h1').toArray().some(element=>isSeparateMerchantService($(element).text(),company.id)))return [];
   const ownHost = host(url) === host(company.website);
   if (!official && !ownHost && !matchesMerchant($('h1').first().text() || $('title').text(),company)) return [];
   const structuredDiagnostics:ParseDiagnostics={incomplete:false,reasons:[]},cardDiagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
@@ -107,7 +109,12 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
       if(isChallengePage(html))throw new SourceError('Сайт запросил проверку браузера','restricted',actualUrl,receipt?.status,undefined,receipt?.attempts);
       fetched=true;report.pagesRead++;report.visited.push(url);if(actualOfficial)report.officialPagesRead!++;
       const diagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
-      const parse=()=>{const adapter=actualOfficial?sourceParser(company,actualUrl,html):undefined;return adapter?adapter.parse(html,actualUrl,receipt?.observedAt??Date.now()):parseMerchantPage(html,actualUrl,company,receipt?.observedAt??Date.now(),actualOfficial,diagnostics);};
+      const parse=()=>{
+        const document=load(html);
+        if(document('title,h1').toArray().some(element=>isSeparateMerchantService(document(element).text(),company.id)))throw new Error('Страница относится к другому сервису магазина');
+        const adapter=actualOfficial?sourceParser(company,actualUrl,html):undefined;
+        return adapter?adapter.parse(html,actualUrl,receipt?.observedAt??Date.now()):parseMerchantPage(html,actualUrl,company,receipt?.observedAt??Date.now(),actualOfficial,diagnostics);
+      };
       let codes:PromoCode[];
       try{codes=parse();}catch(error){throw new SourceError(error instanceof Error?error.message:'Изменилась разметка источника','parse',actualUrl,receipt?.status,undefined,receipt?.attempts);}
       if(!codes.length&&diagnostics.incomplete)throw new SourceError(diagnostics.reasons.join('; '),'parse',actualUrl,receipt?.status,undefined,receipt?.attempts);
@@ -117,7 +124,7 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
       }
       if(actualOfficial)codes=codes.map(code=>({...code,status:code.status==='expired'?'expired':'official',checked:receipt?.observedAt??Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение в корзине не проверялось.',evidence:{method:'source',observedAt:receipt?.observedAt??Date.now(),sourceUrl:actualUrl,message:'Официальная публикация'}}));
       const document=load(html),heading=document('title,h1').text(),merchantMatches=matchesMerchant(heading,company);
-      const empty=/промокод|купон|coupon/i.test(heading)&&(actualOfficial||merchantMatches)&&explicitEmpty(merchantContent(html));
+      const empty=!isSeparateMerchantService(heading,company.id)&&/промокод|купон|coupon/i.test(heading)&&(actualOfficial||merchantMatches)&&explicitEmpty(merchantContent(html));
       const isIndex=!codes.length&&!empty&&sourceIdentity(actualUrl)===sourceIdentity(company.website);
       const outcome=codes.length?'codes':empty?'empty':isIndex?'index':'unrecognized';
       report.sourceResults!.push({url,official:actualOfficial,outcome,count:codes.length,...(receipt?{httpStatus:receipt.status,attempts:receipt.attempts,finalUrl:actualUrl}:{}),...(rendering?{rendering}:{}),...(diagnostics.incomplete?{partial:true,message:diagnostics.reasons.join('; ')}:{}),...(outcome==='unrecognized'?{message:'Страница загружена, но промокоды не распознаны'}:{})});

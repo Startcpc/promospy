@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getCompanyById, type PromoCode } from '../src/lib/promocodes';
-import { parseMerchantPage } from '../src/lib/web-search';
+import { parseMerchantPage, searchMerchant } from '../src/lib/web-search';
 import { parsePromoCodesFromHtml, type ParseDiagnostics } from '../src/lib/promo-parser';
 import { mergeOffers } from '../src/lib/offer-identity';
 import { savedOfferMatches } from '../src/lib/saved-promos';
@@ -103,4 +103,94 @@ test('a publication timestamp cannot masquerade as a coupon deadline',()=>{
 test('a semantic expiry time remains a machine-readable deadline',()=>{
  const html=card('Заказ от 1000 рублей').replace('</article>','<time itemprop="validThrough" datetime="2026-11-30">30 ноября 2026</time></article>');
  assert.equal(read(html)[0]?.expiresAt,Date.parse('2026-11-30T23:59:59.999+03:00'));
+});
+// Live pikabu pages publish the coupon record inside an application/json script
+// and name the store with its official service brand, not the short company
+// name. Before the alias fix these records were silently dropped.
+test('pikabu coupon records owned by "Магнит Доставка" are accepted for Magnit',()=>{
+ const magnit=getCompanyById(201)!;
+ const html='<h1>Промокоды Магнит Доставка</h1><script type="application/json">'+JSON.stringify({_piniaInitialState:{shopTabs:{tabs:[],coupons:[{couponId:1,code:'x',promoCode:'AVXRQVGP',title:'Минус 35% на первый заказ от 1200 рублей в Магнит Экспресс',description:'Максимум - 500 рублей.',forFirstPurchase:true,discountPercent:35}],shop:{id:763,title:'Магнит Доставка'}}}})+'</script>';
+ assert.deepEqual(parseMerchantPage(html,'https://promokod.pikabu.ru/shops/magnit-info',magnit,now).map(code=>code.code),['AVXRQVGP']);
+});
+test('pikabu coupon records owned by "Лента Онлайн" and "Перекресток Впрок" are accepted',()=>{
+ const lenta=getCompanyById(206)!,perekrestok=getCompanyById(205)!;
+ const page=(shop:string,code:string)=>'<h1>Промокоды '+shop+'</h1><script type="application/json">'+JSON.stringify({shop:{title:shop},coupons:[{promoCode:code,title:'Скидка 20% на первый заказ от 1000 рублей'}]})+'</script>';
+ assert.equal(parseMerchantPage(page('Лента Онлайн','LENTA20'),'https://promokod.pikabu.ru/shops/lenta',lenta,now)[0]?.code,'LENTA20');
+ assert.equal(parseMerchantPage(page('Перекресток Впрок','VPROK20'),'https://promokod.pikabu.ru/shops/perekrestok',perekrestok,now)[0]?.code,'VPROK20');
+});
+test('a sibling pikabu store is still not accepted as the merchant',()=>{
+ const magnit=getCompanyById(201)!;
+ const html='<h1>Промокоды Магнит</h1><script type="application/json">'+JSON.stringify({shop:{title:'Магнит Аптека'},coupons:[{promoCode:'APTEKA20',title:'Скидка 20%'}]})+'</script>';
+ assert.deepEqual(parseMerchantPage(html,'https://promokod.pikabu.ru/shops/apteka-magnit',magnit,now),[]);
+});
+
+test('a coupon page for Ozon Bank cannot be accepted as Ozon marketplace',()=>{
+ const html='<h1>Промокоды Ozon Банк</h1><article><h3>Скидка 20%</h3><p>Промокод: BANK20</p></article>';
+ assert.deepEqual(parseMerchantPage(html,'https://promokodi.ru/store/ozon/',getCompanyById(208)!,now),[]);
+});
+test('an Ozon marketplace page cannot import a visible sibling-bank card',()=>{
+ const html='<h1>Промокоды Ozon</h1><article><h3>Ozon Bank: скидка 20%</h3><p>Промокод: BANK20</p></article>';
+ assert.deepEqual(parseMerchantPage(html,'https://promokodi.ru/store/ozon-ru/',getCompanyById(208)!,now),[]);
+});
+test('a Magnit pharmacy page cannot be accepted as Magnit grocery delivery',()=>{
+ const html='<h1>Промокоды Магнит Аптека</h1><article><h3>Скидка 20%</h3><p>Промокод: APTEKA20</p></article>';
+ assert.deepEqual(parseMerchantPage(html,'https://promokod.pikabu.ru/shops/apteka-magnit',getCompanyById(201)!,now),[]);
+});
+test('a grocery coupon page cannot import a visible pharmacy card',()=>{
+ const html='<h1>Промокоды Магнит Доставка</h1><article><h3>Магнит Аптека: скидка 20%</h3><p>Промокод: APTEKA20</p></article>';
+ assert.deepEqual(parseMerchantPage(html,'https://promokod.pikabu.ru/shops/magnit-info',getCompanyById(201)!,now),[]);
+});
+test('service brands remain valid owners of visible grocery coupon cards',()=>{
+ for(const [id,name] of [[201,'Магнит Доставка'],[206,'Лента Онлайн'],[205,'Перекрёсток Впрок']] as const){
+  const html='<h1>Промокоды '+name+'</h1><article><h3>Скидка 20%</h3><p>Промокод: SERVICE20</p></article>';
+  assert.equal(parseMerchantPage(html,'https://promokod.pikabu.ru/shops/example',getCompanyById(id)!,now)[0]?.code,'SERVICE20');
+ }
+});
+
+test('Pikabu wording of the maximum discount preserves its numeric limit',()=>{
+ const merchant=getCompanyById(201)!;
+ for(const description of ['Максимум - 500 рублей.','Максимальная сумма скидки 500 рублей.']){
+  const html='<h1>Промокоды Магнит Доставка</h1><script type="application/json">'+JSON.stringify({shop:{title:'Магнит Доставка'},coupons:[{promoCode:'LIMIT20',title:'Скидка 35% на первый заказ от 1200 рублей',description}]})+'</script>';
+  assert.equal(parseMerchantPage(html,'https://promokod.pikabu.ru/shops/magnit-info',merchant,now)[0]?.maxDiscount,500,description);
+ }
+});
+test('campaigns with the same code and different written discount caps remain separate',()=>{
+ const records=[500,1500].map(maximum=>({promoCode:'LIMIT20',title:'Скидка 35% на первый заказ от 1200 рублей',description:'Максимальная сумма скидки '+maximum+' рублей.'}));
+ const html='<h1>Промокоды Магнит Доставка</h1><script type="application/json">'+JSON.stringify({shop:{title:'Магнит Доставка'},coupons:records})+'</script>';
+ const codes=parseMerchantPage(html,'https://promokod.pikabu.ru/shops/magnit-info',getCompanyById(201)!,now);
+ assert.equal(codes.length,2);assert.deepEqual(new Set(codes.map(code=>code.maxDiscount)),new Set([500,1500]));
+});
+test('different service-specific caps are kept as terms rather than one universal limit',()=>{
+ const description='Максимальная сумма скидки 1500 рублей в Магнит Экспресс. Максимальная сумма скидки 500 рублей в М.Косметик.';
+ const json=JSON.stringify([{promoCode:'MULTICAP20',title:'Скидка 35%',description,merchantName:'Магнит Доставка'}]);
+ const [code]=parseMerchantPage(json,'https://promokod.pikabu.ru/feed.json',getCompanyById(201)!,now);
+ assert.equal(code.maxDiscount,undefined);assert.ok(code.conditions.includes(description));
+});
+test('official-domain redirects cannot promote sibling-service coupons to this merchant',()=>{
+ const html='<h1>Промокоды Магнит Аптека</h1><article><h3>Скидка 20%</h3><p>Промокод: APTEKA20</p></article>';
+ assert.deepEqual(parseMerchantPage(html,'https://apteka.magnit.ru/promos/',getCompanyById(201)!,now,true),[]);
+});
+test('an empty sibling-service page cannot confirm removal of this merchant offers',async()=>{
+ const wrong='<h1>Промокоды Ozon Банк</h1><p>Активных промокодов нет</p>';
+ const report=await searchMerchant(getCompanyById(208)!,AbortSignal.timeout(3000),async()=>wrong);
+ assert.deepEqual(report.codes,[]);assert.deepEqual(report.parsedUrls,[]);
+ assert.ok(report.sourceResults?.every(source=>!['codes','empty'].includes(source.outcome)));
+});
+test('a marketplace coupon paid with a sibling bank card keeps its actual merchant',()=>{
+ const title='Скидка 20% на Ozon при оплате картой Ozon Банка';
+ const merchant=getCompanyById(208)!;
+ const html='<h1>Промокоды Ozon</h1><article><h3>'+title+'</h3><p>Промокод: PAYMENT20</p></article>';
+ assert.equal(parseMerchantPage(html,'https://promokodi.ru/store/ozon-ru/',merchant,now)[0]?.code,'PAYMENT20');
+ const json=JSON.stringify([{promoCode:'PAYMENT20',merchantName:'Ozon',title}]);
+ assert.equal(parseMerchantPage(json,'https://promokodi.ru/feed.json',merchant,now)[0]?.code,'PAYMENT20');
+});
+test('recognizable official markup cannot bypass the sibling-service ownership check',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const fixture=readFileSync(new URL('./fixtures/magnit-official.html',import.meta.url),'utf8');
+ for(const tag of ['title','h1']){
+  const html=fixture.replace(new RegExp('<'+tag+'>[\\s\\S]*?</'+tag+'>','i'),'<'+tag+'>Промокоды Магнит Аптека</'+tag+'>');
+  const report=await searchMerchant(getCompanyById(201)!,AbortSignal.timeout(3000),async url=>url==='https://promo.magnit.ru/'?html:'<title>Empty</title>');
+  assert.deepEqual(report.codes,[]);assert.deepEqual(report.parsedUrls,[]);
+  assert.equal(report.sourceResults?.find(source=>source.url==='https://promo.magnit.ru/')?.errorCode,'parse');
+ }
 });

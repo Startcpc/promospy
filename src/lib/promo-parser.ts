@@ -3,7 +3,7 @@ const require = createRequire(import.meta.url);
 const { load } = require("cheerio") as typeof import("cheerio");
 import { codeKey, getCompanyById, type PromoCode } from "./promocodes";
 import { mergeOffers } from "./offer-identity";
-import { merchantAliases } from "./merchant-aliases";
+import { merchantAliases, normalizeMerchantName } from "./merchant-aliases";
 import { parsePromoDate } from "./promo-date";
 export { parsePromoDate } from "./promo-date";
 import { extractOfficialDates } from "./promo-terms";
@@ -29,6 +29,15 @@ export function parseMoney(text: string): number | undefined {
 function cleanText(value: string) {
   return load(`<div>${value}</div>`)("div").text().replace(/\s+/g, " ").trim().slice(0, 1500);
 }
+function maximumDiscount(record:RecordValue,terms:string){
+  const explicit=field(record,['maxDiscount','maximumDiscount']);
+  if(explicit!==undefined)return parseMoney(explicit);
+  const pattern=/(?:максимальн[а-яё]*\s+(?:сумм[а-яё]*\s+)?скидк[а-яё]*|максимум)\s*[:−–—-]?\s*(\d[\d\s\u00a0\u202f]*(?:[.,]\d{1,2})?)\s*(?:₽|руб)/gi;
+  const limits=[...new Set([...terms.matchAll(pattern)].map(match=>parseMoney(match[1])).filter((value):value is number=>value!==undefined))];
+  // Different limits can be scoped to different services in the same offer.
+  // Keep that prose intact instead of choosing a misleading universal number.
+  return limits.length===1?limits[0]:undefined;
+}
 function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string, now: number, requireMerchant = false, diagnostics?:ParseDiagnostics): PromoCode | undefined {
   const company = getCompanyById(companyId);
   const shop=record.shop??record.seller??record.merchant;
@@ -36,8 +45,8 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
   const merchant = field(record, ["merchantName", "shopName", "storeName", "companyName"]) ?? (nestedShop ? field(nestedShop, ["title", "name"]) : undefined);
   if (requireMerchant && !merchant) return;
   if (merchant && company) {
-    const normalized = merchant.toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]/gu, "");
-    const aliases = [company.name, ...merchantAliases[companyId]??[]].map((name) => name.toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]/gu, ""));
+    const normalized = normalizeMerchantName(merchant);
+    const aliases = [company.name, ...merchantAliases[companyId]??[]].map(normalizeMerchantName);
     if (!aliases.includes(normalized)) return;
   }
   const rawCode = field(record, CODE_FIELDS) ?? (record["@type"] === "Offer" && typeof record.description === "string" ? explicitCode(record.description) : undefined);
@@ -88,7 +97,7 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
     channel: /(?:только|лишь)\s+(?:в\s+)?(?:мобильном\s+)?приложении|app[- ]only/i.test(conditionText)?"app":/(?:только|лишь)\s+(?:в\s+)?магазин[а-яё]*|in[- ]store only/i.test(conditionText)?"in-store":/только\s+на\s+сайте|online only/i.test(conditionText)?"online":undefined,
     regions: Array.isArray(record.regions)?record.regions.filter((value):value is string=>typeof value==="string").slice(0,20).map(value=>cleanText(value).slice(0,200)):undefined,
     categories: Array.isArray(record.eligibleCategories)?record.eligibleCategories.filter((value):value is string=>typeof value==="string").slice(0,20).map(value=>cleanText(value).slice(0,200)):undefined,
-    maxDiscount: (()=>{const value=field(record,["maxDiscount","maximumDiscount"])??conditionText.match(/максимальн[а-яё]*\s+скидк[а-яё]*\s*[:—-]?\s*(\d[\d\s]*(?:[.,]\d{1,2})?)\s*(?:₽|руб)/i)?.[1];return value?parseMoney(value):undefined;})(),
+    maxDiscount: maximumDiscount(record,conditionText),
     found: now, conditions, minOrder: minimum ? parseMoney(minimum) : undefined, startsAt, expiresAt,
   };
 }
