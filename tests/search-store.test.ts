@@ -134,3 +134,21 @@ test('unrepresentable timestamps are filtered from disk before rendering',async(
  writeFileSync(path.join(dir,`${id}.json`),JSON.stringify({companyId:id,at:Date.now(),report:{...report,codes:[code]}}));
  assert.deepEqual((await searchState(id)).codes,[]);
 });
+
+test('completion between cache and status reads cannot return idle with the pre-refresh offers',async()=>{
+ const fs=await import('node:fs/promises'),{syncBuiltinESMExports}=await import('node:module');
+ const original=fs.default.readFile,id=208,file=path.join(dir,'208.json');
+ const offer=(code:string)=>({id:'208:'+code,companyId:id,code,description:'Race fixture',discount:'10%',status:'found' as const,conditions:[],found:100,sources:[{url:'https://ozon.ru/race',name:'ozon.ru',seenAt:100}]});
+ writeFileSync(file,JSON.stringify({companyId:id,at:100,report:{...report,codes:[offer('BEFORE')]} }));
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ await requestSearch(id,async()=>{await gate;return {...report,codes:[offer('AFTER')]};},true);
+ let captured=false;
+ fs.default.readFile=(async(...args:Parameters<typeof original>)=>{
+  const value=await original(...args);
+  if(String(args[0])===file&&!captured){captured=true;release();await settle(id);}
+  return value;
+ }) as typeof original;
+ syncBuiltinESMExports();
+ try{const state=await searchState(id);assert.equal(state.status,'idle');assert.equal(state.codes[0]?.code,'AFTER');}
+ finally{release();fs.default.readFile=original;syncBuiltinESMExports();await settle(id);}
+});

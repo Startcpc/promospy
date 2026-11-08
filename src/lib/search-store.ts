@@ -15,12 +15,13 @@ import { closeSourceDispatchers } from './fetch-policy';
 export type MerchantSearchState = ScanState & { report?: Omit<SearchReport,'codes'>; notice?: string; serverTime?: number };
 type Job = {id:number;execute:typeof searchMerchant;status:'queued'|'running';report?:SearchReport;controller:AbortController;previousUrls:string[]};
 type Failure={message:string;retry:number;report?:SearchReport;storageError?:boolean};
-type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;active:number;stopping:boolean;tasks:Set<Promise<void>>};
+type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>};
 const runtimeKey=Symbol.for('promospy.search.runtime');
 const globals=globalThis as typeof globalThis & {[runtimeKey]?:Runtime};
-const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),active:0,stopping:false,tasks:new Set<Promise<void>>()};
+const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),revisions:new Map<number,number>(),active:0,stopping:false,tasks:new Set<Promise<void>>()};
+runtime.revisions??=new Map<number,number>();
 globals[runtimeKey]=runtime;
-const {jobs,failures}=runtime;
+const {jobs,failures,revisions}=runtime;
 const markerPath=(id:number)=>path.join(directory(),String(id)+'.pending');
 async function marker(id:number):Promise<{retry?:number}|null>{
   try{const raw=await readFile(markerPath(id),'utf8');if(raw.length>1000)return null;const data=JSON.parse(raw);return data&&typeof data==='object'?{retry:Number.isFinite(data.retry)&&data.retry>Date.now()&&data.retry<Date.now()+86400000?data.retry:undefined}:null;}catch{return null;}
@@ -33,18 +34,26 @@ function mergeWithSaved(fresh: PromoCode[], old: PromoCode[]) {
   return mergeOffers([...fresh,...old]).slice(0,100);
 }
 export async function searchState(id: number): Promise<MerchantSearchState> {
-  const result=await cached(id),interrupted=await marker(id),job=jobs.get(id);
-  const failure:Failure|undefined=failures.get(id)??(interrupted?.retry?{message:'Предыдущий поиск не завершился',retry:interrupted.retry}:undefined);
-  const report=job?.report??failure?.report??(interrupted&&!failure&&result?{...result.report,phase:undefined}:result?.report);
-  const {codes: _codes,...summary} = report ?? {codes:[]};
-  return {
-    codes: job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
-    status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:result?.at ?? null,
-    serverTime:Date.now(),
-    nextScan:failure?.retry ?? (result ? result.at + 15*60000 : null),error:null,log:[],
-    ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
-    ...(failure ? {notice:failure.storageError ? 'Не удалось сохранить кеш. Результаты доступны до перезапуска сервера.' : result?.report.codes.length ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : failure.report?.pagesRead ? 'Страницы загрузились, но извлечь промокоды не удалось. Можно повторить поиск.' : 'Источники не загрузились. Можно повторить поиск.'} : {}),
-  };
+  for(let attempt=0;attempt<5;attempt++){
+    const revision=revisions.get(id)??0;
+    const result=await cached(id),interrupted=await marker(id);
+    // A job may finish while the old cache is being read. Its idle status must
+    // never be paired with that pre-refresh snapshot.
+    if(revision!==(revisions.get(id)??0))continue;
+    const job=jobs.get(id);
+    const failure:Failure|undefined=failures.get(id)??(interrupted?.retry?{message:'Предыдущий поиск не завершился',retry:interrupted.retry}:undefined);
+    const report=job?.report??failure?.report??(interrupted&&!failure&&result?{...result.report,phase:undefined}:result?.report);
+    const {codes: _codes,...summary} = report ?? {codes:[]};
+    return {
+      codes: job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
+      status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:result?.at ?? null,
+      serverTime:Date.now(),
+      nextScan:failure?.retry ?? (result ? result.at + 15*60000 : null),error:null,log:[],
+      ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
+      ...(failure ? {notice:failure.storageError ? 'Не удалось сохранить кеш. Результаты доступны до перезапуска сервера.' : result?.report.codes.length ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : failure.report?.pagesRead ? 'Страницы загрузились, но извлечь промокоды не удалось. Можно повторить поиск.' : 'Источники не загрузились. Можно повторить поиск.'} : {}),
+    };
+  }
+  throw new Error('Состояние поиска меняется. Повторите запрос.');
 }
 function resultCodes(report: SearchReport, previous: PromoCode[]) {
   // A failed source cannot erase its last known offers or renew their confirmation.
@@ -105,7 +114,7 @@ function drain() {
       } finally {
         const failure=failures.get(job.id);
         if(!runtime.stopping){if(failure)await writeMarker(job.id,failure.retry);else await rm(markerPath(job.id),{force:true}).catch(()=>{});}
-        jobs.delete(job.id);runtime.active--;drain();
+        revisions.set(job.id,(revisions.get(job.id)??0)+1);jobs.delete(job.id);runtime.active--;drain();
       }
     })();
     runtime.tasks.add(task);void task.finally(()=>runtime.tasks.delete(task));
@@ -119,6 +128,7 @@ export async function requestSearch(id: number, execute = searchMerchant, force 
   if(jobs.has(id))return searchState(id);
   if (!force && !oldParserCache && state.nextScan && state.nextScan > Date.now()) return state;
   failures.delete(id);jobs.set(id,{id,execute,status:'queued',controller:new AbortController(),previousUrls:[...new Set([...state.codes.flatMap(code=>code.sources.map(source=>source.url)),...state.report?.visited??[]])].slice(0,16)});
+  revisions.set(id,(revisions.get(id)??0)+1);
   await writeMarker(id);drain();
   return {...state,status:jobs.get(id)?.status ?? 'running',error:null,notice:undefined};
 }

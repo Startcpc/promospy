@@ -12,6 +12,10 @@ const pikabuSlugs:Record<number,string>={5:'burgerkingrus',54:'vkusvill',102:'vk
 const promokodiSlugs:Record<number,string>={5:'burger-king',54:'vkusvill',102:'vkusno-i-tochka',201:'magnit-dostavka',202:'pyatyorochka',203:'yandex-lavka',204:'yandeks-market',205:'perekrestok',206:'lenta',207:'promokod-wildberries',208:'ozon-ru',301:'tanuki',302:'kroshka-kartoshka'};
 const promokodusSlugs:Record<number,string>={5:'burger-king',102:'vkusno-i-tochka',202:'pyaterochka',203:'yandex-lavka',204:'yandex-market',205:'perekrestok',206:'lenta',207:'wildberries',208:'ozon',301:'tanuki',302:'kroshka-kartoshka'};
 const cashbackSlugs:Record<number,string>={54:'vkusvill',201:'magnit'};
+const additionalSources:Record<number,string[]>={5:[
+  'https://getcashback.ru/promocodes/burgerking/',
+  'https://promokod.vbr.ru/shops/burger-king/',
+]};
 export type SourceAdapter={
   id:string;
   officialUrls:(company:Company)=>string[];
@@ -45,7 +49,7 @@ export const publicSources:SourceAdapter={
     const cashback=cashbackSlugs[company.id],promokodus=promokodusSlugs[company.id];
     if(cashback)seeds.push('https://getcashback.ru/promocodes/'+cashback+'/');
     else if(promokodus)seeds.push('https://promokodus.com/campaigns/'+promokodus);
-    return seeds;
+    return [...new Set([...seeds,...additionalSources[company.id]??[]])];
   },
 };
 export function officialDomains(company:Company){

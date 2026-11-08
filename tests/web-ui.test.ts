@@ -274,3 +274,33 @@ test('favorites transfer survives reload and invalid files; hidden and offline p
   assert.deepEqual(errors,[]);await context.close();
  }finally{await browser?.close();server.kill();}
 });
+
+test('Burger King source failures do not prevent a public fallback from appearing and refreshing',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {APP_VERSION}=await import('../src/lib/app-version');
+ const directory=mkdtempSync(path.join(tmpdir(),'promospy-source-failures-')),base='http://127.0.0.1:3143';
+ const requestLog=path.join(directory,'requests.txt');
+ const server=spawn(process.execPath,['--import',new URL('./helpers/source-http-network.mjs',import.meta.url).href,'scripts/start.mjs'],{
+  env:{...process.env,PORT:'3143',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory,PROMO_TEST_REQUEST_LOG:requestLog},stdio:['ignore','pipe','pipe'],
+ });
+ let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);let browser;
+ try{
+  let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
+  const health=await(await fetch(base+'/api/health')).json();assert.equal(health.version,APP_VERSION);
+  browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
+  const page=await browser.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto(base+'/company/5');await page.getByRole('button',{name:'Сохранить TESTBK20',exact:true}).waitFor();
+  for(let i=0;i<100&&await page.getByRole('button',{name:'Обновить',exact:true}).isDisabled();i++)await page.waitForTimeout(100);
+  await page.getByText('Подробнее об обновлении',{exact:true}).click();
+  await page.getByText('PromoSpy '+APP_VERSION,{exact:true}).waitFor();
+  assert.ok(await page.getByText('Сайт отклонил запрос',{exact:false}).count()>0);
+  assert.ok(await page.getByText('HTTP 403',{exact:false}).count()>0);
+  const source='https://promokodi.ru/store/burger-king/';
+  const before=readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length;assert.ok(before>0);
+  await page.getByRole('button',{name:'Обновить',exact:true}).click();
+  for(let i=0;i<100;i++){if(readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length>before)break;await page.waitForTimeout(100);}
+  assert.ok(readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length>before);
+  await page.getByRole('button',{name:'Сохранить TESTBK20',exact:true}).click();await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
+  await page.getByRole('button',{name:'Условия TESTBK20',exact:true}).waitFor();assert.deepEqual(errors,[]);
+ }finally{await browser?.close();server.kill();}
+});

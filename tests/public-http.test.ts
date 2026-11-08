@@ -122,7 +122,7 @@ test('robots rules are checked first; a disallow never fetches the protected doc
 test('a missing robots file permits public content; a failed robots check does not grant access',async()=>{
   let pages=0;const allowed=client(async input=>String(input).endsWith('/robots.txt')?new Response('',{status:404}):(pages++,html()));
   await allowed.readText(url,domains,AbortSignal.timeout(2000));assert.equal(pages,1);
-  const denied=client(async()=>new Response('denied',{status:403}));
+  const denied=client(async()=>new Response('server failure',{status:503}),{retries:0});
   await assert.rejects(denied.readText(url,domains,AbortSignal.timeout(2000)),error=>error instanceof SourceError&&error.code==='robots');
 });
 test('robots longest match, allow ties, agent groups and wildcard rules are respected',()=>{

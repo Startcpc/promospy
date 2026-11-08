@@ -116,13 +116,16 @@ export class PublicHttpClient {
       this.robots.set(origin,{rules,at:Date.now()});this.queue.delayHost(new URL(url).hostname,rules.delayMs);return rules;
     }catch(error){
       if(signal.aborted)throw signal.reason;
-      if(error instanceof SourceError&&[404,410].includes(error.status??0)){
+      // RFC 9309 §2.3.1.3: an unavailable robots resource is not a ban on
+      // public documents. Timeouts, server errors and rate limits remain closed.
+      if(error instanceof SourceError&&[400,401,403,404,405,410].includes(error.status??0)){
         const rules:RobotsRules={rules:[],delayMs:0,sitemaps:[]};
+        if(this.robots.size>=64)this.robots.delete(this.robots.keys().next().value!);
         this.robots.set(origin,{rules,at:Date.now()});return rules;
       }
       // A previously read policy is safer than assuming that a temporary failure grants access.
       if(cached&&Date.now()-cached.at<86400000)return cached.rules;
-      throw new SourceError('Не удалось проверить правила robots.txt','robots',url,error instanceof SourceError?error.status:undefined,Date.now()+60000);
+      throw new SourceError('Не удалось проверить правила robots.txt','robots',robotsUrl,error instanceof SourceError?error.status:undefined,Date.now()+60000,error instanceof SourceError?error.attempts:0);
     }
   }
   private async perform(original:string,domains:readonly string[],signal:AbortSignal,options:ReadOptions):Promise<PublicDocument>{
@@ -177,6 +180,10 @@ export class PublicHttpClient {
             }
             const contentType=response.headers.get('content-type')??'';
             const kind=options.kind??'document';
+            if(kind==='robots'&&response.status===204){
+              await response.body?.cancel();this.forget(key);
+              return {document:{body:new Uint8Array(),contentType:'text/plain',receipt:{url:original,finalUrl:url,status:204,attempts,revalidated:false,observedAt:Date.now(),bytes:0}}};
+            }
             if(!(/html|xml|json/i.test(contentType)||kind==='sitemap'&&/gzip/i.test(contentType)||kind==='robots'&&/^text\/plain/i.test(contentType)||kind==='resource'&&/javascript|ecmascript|text\/css|text\/plain/i.test(contentType))){
               await response.body?.cancel();throw new SourceError('Ответ не содержит поддерживаемый текстовый документ','content_type',url,response.status);
             }
@@ -187,7 +194,7 @@ export class PublicHttpClient {
             try{
               while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>limit)throw new SourceError('Страница превышает лимит размера','size',url,response.status);chunks.push(part.value);}
             }finally{await reader.cancel().catch(()=>{});}
-            if(!size)throw new SourceError('Пустой ответ источника','empty',url,response.status);
+            if(!size&&!(kind==='robots'&&response.status===200))throw new SourceError('Пустой ответ источника','empty',url,response.status);
             if(length>0&&!response.headers.get('content-encoding')&&size<length)throw new SourceError('Источник прислал неполный ответ','partial',url,response.status);
             const body=Buffer.concat(chunks),at=Date.now();
             if(cacheable(response.headers))this.remember(key,{body,at,contentType,etag:response.headers.get('etag'),modified:response.headers.get('last-modified')});
@@ -205,12 +212,12 @@ export class PublicHttpClient {
           const problem=error instanceof SourceError?error:new SourceError(networkCode(error)==='tls'?'Ошибка TLS источника':networkCode(error)==='dns'?'Не удалось определить адрес источника':networkCode(error)==='timeout'?'Источник не ответил вовремя':networkCode(error)==='restricted'?'Непубличный адрес источника':'Соединение с источником прервано',networkCode(error),url,undefined,undefined,attempts);
           last=problem;
           const status=problem.status??0;
-          if([401,403,429].includes(status)){
-            problem.retryAt=problem.retryAt??Date.now()+([401,403].includes(status)?900000:60000);
+          if(status===429){
+            problem.retryAt=problem.retryAt??Date.now()+60000;
             this.circuits.set(host,{failures:3,until:problem.retryAt,status});
           }
-          if([400,404,410].includes(status)){
-            problem.retryAt=Date.now()+(status===400?300000:3600000);
+          if([400,401,403,404,410].includes(status)){
+            problem.retryAt=problem.retryAt??Date.now()+([401,403].includes(status)?900000:status===400?300000:3600000);
             if(this.missing.size>=256)this.missing.delete(this.missing.keys().next().value!);
             this.missing.set(key,problem);
           }

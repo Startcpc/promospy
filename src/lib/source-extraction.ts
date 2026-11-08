@@ -46,7 +46,7 @@ export function extractCouponCards(html: string, url: string, company: Company, 
   const elements = $('body *').toArray();
   const positions = new Map(elements.map((el,index) => [el,index]));
   const related = $('h2,h3,h4').toArray().find(el => /^(?:похожие\s+(?:промокоды|купоны|магазины)|другие магазины|рекомендуемые магазины)/i.test($(el).text().trim()));
-  const ended = $('h2,h3,h4').toArray().find(el => /купоны уже закончились|ист[её]кшие|заверш[её]нные акции|промокоды с ист[её]кшим|expired\s+(?:coupons|codes|offers)|ended\s+(?:promotions|offers)/i.test($(el).text()));
+  const ended = $('h2,h3,h4').toArray().find(el => /купоны уже закончились|ист[её]кшие|заверш[её]нные акции|промокоды с ист[её]кшим|(?:купоны|промокоды).{0,100}доступные ранее|expired\s+(?:coupons|codes|offers)|ended\s+(?:promotions|offers)/i.test($(el).text()));
   const result: PromoCode[] = [];
   $(CARD).each((_,el) => {
     const card = $(el);

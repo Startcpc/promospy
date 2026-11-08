@@ -10,6 +10,15 @@ import { SavedPromosLink } from "@/components/saved-promos-link";
 import { PromoCard, formatPromoDate } from "@/components/promo-card";
 import { browserRequestSignal } from "@/lib/browser-request";
 import { canRequestFromPage, watchPageActivity } from "@/lib/page-activity";
+import { APP_VERSION } from "@/lib/app-version";
+
+function sourceFailureMessage(source:{httpStatus?:number;errorCode?:string;message?:string}){
+  if(source.errorCode==='robots')return source.message??'Не удалось загрузить правила сайта';
+  if(source.httpStatus===401)return 'Этот адрес требует авторизацию';
+  if(source.httpStatus===403)return 'Сайт отклонил запрос';
+  if(source.httpStatus===404)return 'Страница не найдена';
+  return source.message??'Не удалось прочитать источник';
+}
 
 export function CompanyResults({ id, initialState }: { id: number; initialState: MerchantSearchState }) {
   const company = getCompanyById(id);
@@ -99,12 +108,13 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
       {state?.report && <p className="mt-3 text-base">Найдено: {state.report.couponsFound ?? state.codes.length} · Прочитано страниц: {state.report.pagesRead}.</p>}
       {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
         <div className="mt-3 space-y-2">
+          <p>PromoSpy {APP_VERSION}</p>
           {state.report && <p>Официальных кодов: {state.report.officialCoupons ?? 0} · Ограничений: {state.report.pagesBlocked ?? 0} · Ошибок разбора: {state.report.parseFailures ?? 0}</p>}
           {state.report?.budget && <p>Страниц проверено по бюджету: {state.report.budget.pagesUsed} из {state.report.budget.pages}. Индексы и карты: {state.report.budget.discoveryUsed} из {state.report.budget.discoveryRequests}.</p>}
           {state.report?.discovery?.map((provider,index)=><p key={provider.url+index}>{provider.provider}: {provider.outcome === "ok" ? `найдено ссылок ${provider.found}` : provider.message ?? "индекс не прочитан"}</p>)}
           {state.lastScan && <p>Результаты получены: {formatPromoDate(state.lastScan)} МСК</p>}
           {error && <p>{error}</p>}
-          {state.report?.sourceResults?.map(source => <p key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">{new URL(source.url).hostname}</a>: {source.outcome === "codes" ? `найдено ${source.count}` : source.outcome === "empty" ? "на странице указано, что промокодов нет" : source.outcome === "index" ? "страница магазина" : source.message ?? "не удалось разобрать"}{source.httpStatus ? ` · ${source.errorCode === "robots" ? "robots.txt: " : ""}HTTP ${source.httpStatus}` : ""}{source.rendering === "unavailable" ? " · локальный браузер недоступен" : ""}</p>)}
+          {state.report?.sourceResults?.map(source => <p key={source.url}><a href={source.failureUrl??source.finalUrl??source.url} title={source.failureUrl??source.finalUrl??source.url} target="_blank" rel="noopener noreferrer" className="underline">{new URL(source.failureUrl??source.finalUrl??source.url).hostname}</a>: {source.outcome === "codes" ? `найдено ${source.count}` : source.outcome === "empty" ? "на странице указано, что промокодов нет" : source.outcome === "index" ? "страница магазина" : sourceFailureMessage(source)}{source.httpStatus ? ` · ${source.errorCode === "robots" ? "robots.txt: " : ""}HTTP ${source.httpStatus}` : ""}{source.rendering === "unavailable" ? " · локальный браузер недоступен" : ""}</p>)}
           {!state.report?.sourceResults && state.report?.issues?.map(issue => <p key={issue.url}>{new URL(issue.url).hostname}: {issue.reason}</p>)}
           <p>Истёкшие и отклонённые коды скрываются через 24 часа.</p>
           {state.report && <p>Сайтов к чтению: {state.report.discoveredSites}. Цель — до {state.report.targetSites}.</p>}

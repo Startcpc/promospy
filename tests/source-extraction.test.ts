@@ -138,3 +138,9 @@ test('invalid explicit dates in official metadata cannot become unlimited offers
   assert.equal(report.codes.length,0);
  }
 });
+
+test('previously available Burger King coupons stay archived even with a future date',()=>{
+ const html='<h1>Промокоды Бургер Кинг</h1><h2>Купоны на скидку в Бургер Кинг доступные ранее:</h2><article data-expires-at="2030-12-31"><h3>Скидка на заказ</h3><p>Промокод: ARCHIVEDBK</p></article>';
+ const [code]=parseMerchantPage(html,'https://getcashback.ru/promocodes/burgerking/',getCompanyById(5)!);
+ assert.equal(code.status,'expired');
+});
