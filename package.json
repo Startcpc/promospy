@@ -1,6 +1,6 @@
 {
   "name": "promospy",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "db:restore": "node --env-file-if-exists=.env scripts/restore-db.mjs",
     "test:ui": "node --import ./scripts/register-ts.mjs --test --experimental-test-isolation=none tests/web-ui.test.ts tests/browser-reader.test.ts",
     "test:live": "node --import ./scripts/register-ts.mjs scripts/test-live.ts",
+    "audit:sources": "node --import ./scripts/register-ts.mjs scripts/audit-sources.ts",
     "test:launcher": "node scripts/test-launcher.mjs",
     "test:database": "node --test tests/database-tools.test.mjs",
     "cache:backup": "node --import ./scripts/register-ts.mjs scripts/search-cache.mjs backup",

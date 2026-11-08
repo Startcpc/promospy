@@ -62,3 +62,4 @@ server.log
 /db/backups/
 /.runtime/
 __pycache__/
+/work/

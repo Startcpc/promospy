@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { PUBLIC_CATALOGUES, SEARCH_DOMAINS, catalogueUrls, EXCLUDED_CATALOGUES } from '../src/lib/source-catalog';
 import { companies } from '../src/lib/companies';
 import { safeSource } from '../src/lib/fetch-policy';
@@ -118,4 +119,44 @@ test('a proven previous public URL is scheduled before new catalogue candidates'
   const seen:string[]=[],previous='https://promocodex.ru/promocodes/observed-vkusvill/';
   await searchMerchant(company,AbortSignal.timeout(3000),async target=>{seen.push(target);return '<rss/>';},undefined,{previousUrls:[previous]});
   assert.ok(seen.indexOf(previous)<seen.indexOf('https://promokod.pikabu.ru/shops/vkusvill'));
+});
+
+// Reproduced from an actual HTTP response, reduced to the card structure.
+// Coupon values in this fixture are synthetic and never loaded by the app.
+const getcashbackUrl='https://getcashback.ru/promocodes/vkusvill/';
+const getcashbackHtml=readFileSync(new URL('./fixtures/getcashback-public.html',import.meta.url),'utf8');
+test('GetCashback full public codes retain card-specific terms and Moscow deadlines',()=>{
+  const codes=parseMerchantPage(getcashbackHtml,getcashbackUrl,company,now);
+  const code=codes.find(code=>code.code==='PUBLIC600')!;
+  assert.ok(code);assert.equal(code.status,'found');assert.equal(code.minOrder,3000);
+  assert.equal(code.expiresAt,Date.parse('2026-11-30T23:59:59.999+03:00'));
+  assert.ok(code.conditions.join(' ').includes('Не действует на товары от партнёров'));
+  assert.equal(code.appOnly,true);assert.equal(code.sources[0].url,getcashbackUrl);
+  assert.equal(code.checked,undefined);assert.ok(validPromo(code,54));
+  assert.equal(codes.find(code=>code.code==='ARCHIVE200')?.status,'expired');
+});
+test('GetCashback adaptation is limited to the observed host and merchant',()=>{
+  assert.deepEqual(parseMerchantPage(getcashbackHtml,'https://promokodi.ru/store/vkusvill/',company,now),[]);
+  assert.deepEqual(parseMerchantPage(getcashbackHtml.replace('Промокоды ВкусВилл','Промокоды Ozon'),getcashbackUrl,company,now),[]);
+});
+test('GetCashback masks, link placeholders and Telegram ads do not become codes',()=>{
+  for(const value of ['AB***','Подробнее по ссылке'])assert.equal(parseMerchantPage(getcashbackHtml.replace('PUBLIC600',value),getcashbackUrl,company,now).some(code=>code.status==='found'),false);
+  assert.deepEqual(parseMerchantPage('<h1>ВкусВилл</h1><div class="m-banner">'+getcashbackHtml.replace('PUBLIC600','TG')+'</div>',getcashbackUrl,company,now),[]);
+});
+test('GetCashback invalid deadlines mark the page partial and preserve the valid sibling',()=>{
+  const diagnostics={incomplete:false,reasons:[] as string[]};
+  const codes=parseMerchantPage(getcashbackHtml.replace('30 ноября 2026 г.','31 февраля 2026 г.'),getcashbackUrl,company,now,false,diagnostics);
+  assert.deepEqual(codes.map(code=>code.code),['ARCHIVE200']);assert.equal(diagnostics.incomplete,true);
+});
+test('GetCashback hidden and paid cards remain excluded after adaptation',()=>{
+  for(const attribute of ['hidden','data-premium="true"','data-requires-login="true"']){
+    const html=getcashbackHtml.replaceAll('class="coupon--item',attribute+' class="coupon--item');
+    assert.deepEqual(parseMerchantPage(html,getcashbackUrl,company,now),[]);
+  }
+});
+test('GetCashback popular coupons cannot leak other merchants with the same card markup',()=>{
+  for(const heading of ['<h2>Популярные купоны</h2>','<div class="coupon-title">Похожие купоны</div>']){
+    const html=getcashbackHtml+heading+getcashbackHtml.replaceAll('PUBLIC600','FOREIGN600').replaceAll('ARCHIVE200','FOREIGN200');
+    assert.deepEqual(parseMerchantPage(html,getcashbackUrl,company,now).map(code=>code.code).sort(),['ARCHIVE200','PUBLIC600']);
+  }
 });
