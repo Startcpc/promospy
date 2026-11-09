@@ -157,3 +157,12 @@ test('completion between cache and status reads cannot return idle with the pre-
  try{const state=await searchState(id);assert.equal(state.status,'idle');assert.equal(state.codes[0]?.code,'AFTER');}
  finally{release();fs.default.readFile=original;syncBuiltinESMExports();await settle(id);}
 });
+
+test('a partially parsed refresh preserves the newest observation time for each successfully retrieved code',async()=>{
+ const at=Date.now()-100000,now=Date.now(),source='https://getcashback.ru/promocodes/vkusvill/';
+ const code={id:'54:PARTIAL20',companyId:54,code:'PARTIAL20',description:'Скидка на заказ',discount:'20%',status:'found' as const,conditions:[],found:at,sources:[{url:source,name:'getcashback.ru',seenAt:at}]};
+ writeFileSync(path.join(dir,'54.json'),JSON.stringify({companyId:54,at,report:{...report,codes:[code]}}));
+ const fresh={...code,found:now,sources:[{url:source,name:'getcashback.ru',seenAt:now}]};
+ await requestSearch(54,async()=>({...report,codes:[fresh],visited:[source],parsedUrls:[],sourceResults:[{url:source,official:false,outcome:'codes',count:1,partial:true}]}),true);
+ const state=await settle(54);assert.equal(state.codes[0].sources[0].seenAt,now);assert.equal(state.codes[0].found,at);assert.equal(state.codes[0].cached,false);
+});

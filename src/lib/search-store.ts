@@ -74,7 +74,11 @@ function resultCodes(report: SearchReport, previous: PromoCode[]) {
     if (!saved) return code;
     if (offerConflict(saved,code)) return code;
     const preferred = saved.status === 'official' && code.status !== 'official' ? saved : code;
-    const sources = new Map([...preferred.sources,...code.sources,...saved.sources].map(source => [sourceIdentity(source.url),source]));
+    const sources = new Map(preferred.sources.map(source => [sourceIdentity(source.url),source]));
+    for (const source of [...code.sources,...saved.sources]) {
+      const key = sourceIdentity(source.url), previousSource = sources.get(key);
+      if (!previousSource || source.seenAt > previousSource.seenAt) sources.set(key,source);
+    }
     return {...preferred,sources:[...sources.values()]};
   });
   return mergeWithSaved(fresh,retained);
