@@ -39,3 +39,78 @@ test('one transient 503 receives a bounded retry instead of ending the source im
  try {assert.match(await readPublicPage(url+'retry',['promokodi.ru'],AbortSignal.timeout(10000)),/Recovered/);assert.equal(calls,2);}
  finally {globalThis.fetch=original;if(proxy===undefined)delete process.env.HTTPS_PROXY;else process.env.HTTPS_PROXY=proxy;}
 });
+
+test('placeholders and HTTP error captions never become coupon values',()=>{
+ for(const value of ['нет','отсутствует','недоступен','undefined','null','HTTP 403','HTTPS','true','false']){
+  assert.deepEqual(parseMerchantPage(page(`<article><h3>Скидка 20%</h3><p>Промокод: ${value}</p></article>`),url,company),[],value);
+  const json=JSON.stringify([{promoCode:value,title:'Скидка 20%',merchantName:'ВкусВилл'}]);
+  assert.deepEqual(parseMerchantPage(json,url,company),[],value);
+ }
+});
+test('removed merchant recommendations remain excluded from cards, feeds and structured data',()=>{
+ for(const merchant of ['Ozon','Магнит','Пятёрочка','Яндекс Маркет','Wildberries','Burger King','Лента','Перекрёсток','Тануки']){
+  const card=`<article><h3>${merchant}: скидка 20%</h3><p>Промокод: FOREIGN20</p></article>`;
+  assert.deepEqual(parseMerchantPage(page(card),url,company),[],merchant);
+  const feed=`<rss><channel><title>ВкусВилл</title><item><title>${merchant}: скидка 20%</title><description><![CDATA[<p>Промокод: FOREIGN20</p>]]></description></item></channel></rss>`;
+  assert.deepEqual(parseMerchantPage(feed,url,company),[],merchant);
+  assert.deepEqual(parseMerchantPage(JSON.stringify({merchantName:merchant,offers:[{promoCode:'FOREIGN20',title:'Скидка 20%'}]}),url,company),[],merchant);
+ }
+});
+test('malformed JSON and HTML do not invent codes or crash the parser',()=>{
+ for(const html of ['{','null','[]','{"promoCode":','<html><article><p>Скидка 20%','<script>{"promoCode":</script>'])assert.deepEqual(parseMerchantPage(html,url,company),[]);
+});
+test('VkusVill structured records preserve explicit maximum discounts and separate campaigns',()=>{
+ const records=[500,1500].map(limit=>({promoCode:'LIMIT20',merchantName:'ВкусВилл',title:'Скидка 35% на первый заказ от 1200 рублей',description:`Максимальная сумма скидки ${limit} рублей.`}));
+ const codes=parseMerchantPage(JSON.stringify(records),url,company);
+ assert.equal(codes.length,2);assert.deepEqual(new Set(codes.map(code=>code.maxDiscount)),new Set([500,1500]));
+});
+
+test('cancellation during a source read stops the search before alternative sources start',async()=>{
+ const {searchMerchant}=await import('../src/lib/web-search');
+ const controller=new AbortController();let calls=0,started!:()=>void;
+ const ready=new Promise<void>(resolve=>{started=resolve;});
+ const pending=searchMerchant(company,controller.signal,async(_url,_domains,signal)=>{
+  calls++;started();return new Promise<string>((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
+ });
+ const rejected=assert.rejects(pending,/cancel test/);await ready;controller.abort(new Error('cancel test'));await rejected;assert.equal(calls,1);
+});
+
+test('coupon maximum wording and several service-specific limits stay faithful to source terms',()=>{
+ for(const description of ['Максимум - 500 рублей.','Максимальная сумма скидки 500 рублей.']){
+  const [code]=parseMerchantPage(JSON.stringify([{promoCode:'CAP20',merchantName:'ВкусВилл',title:'Скидка 20%',description}]),url,company);
+  assert.equal(code.maxDiscount,500);
+ }
+ const description='Максимальная сумма скидки 1500 рублей при доставке. Максимальная сумма скидки 500 рублей в магазине.';
+ const [code]=parseMerchantPage(JSON.stringify([{promoCode:'CAP20',merchantName:'ВкусВилл',title:'Скидка 20%',description}]),url,company);
+ assert.equal(code.maxDiscount,undefined);assert.ok(code.conditions.includes(description));
+});
+test('recognizable VkusVill markup cannot override a foreign title or heading',async()=>{
+ const {readFileSync}=await import('node:fs'),{searchMerchant}=await import('../src/lib/web-search');
+ const fixture=readFileSync(new URL('./fixtures/vkusvill-official.html',import.meta.url),'utf8');
+ for(const tag of ['title','h1']){
+  const html=fixture.replace(new RegExp('<'+tag+'[^>]*>[\\s\\S]*?</'+tag+'>','i'),'<'+tag+'>Промокоды Ozon</'+tag+'>');
+  const report=await searchMerchant(company,AbortSignal.timeout(3000),async target=>target==='https://vkusvill.ru/promocodes/'?html:'<rss/>');
+  assert.deepEqual(report.codes,[]);assert.deepEqual(report.parsedUrls,[]);
+ }
+});
+
+test('explicit labels never truncate masked or invalid tokens into invented codes',()=>{
+ for(const value of ['ABC***','ABC…','ABC...','ABC•••','ABC****DEF','ABC[скрыто]','ABCD/1234','ABC ****','ABC …']){
+  assert.deepEqual(parseMerchantPage(page(`<article><h3>Скидка 20%</h3><p>Промокод: ${value}</p></article>`),url,company),[],value);
+  const json=JSON.stringify({'@type':'Offer',merchantName:'ВкусВилл',description:`Промокод: ${value}`});
+  assert.deepEqual(parseMerchantPage(json,url,company),[],value);
+ }
+ for(const value of ['MiXeD20.','«MiXeD20»','MiXeD20,'])assert.equal(parseMerchantPage(page(`<article><h3>Скидка 20%</h3><p>Промокод: ${value}</p></article>`),url,company)[0]?.code,'MiXeD20');
+});
+
+test('an archived catalogue campaign cannot expire a freshly published official code',async()=>{
+ const {mergeOffers}=await import('../src/lib/offer-identity');
+ const current=parseMerchantPage(page('<article><h3>Скидка 200 рублей</h3><p>Промокод: REUSED20</p><p>На первый заказ от 1000 рублей</p></article>'),url,company)[0];
+ const official={...current,status:'official',checked:Date.now()} as typeof current;
+ const archived={...current,status:'expired',expiresAt:Date.parse('2025-12-31T23:59:59+03:00'),sources:[{url:'https://getcashback.ru/promocodes/vkusvill/',name:'getcashback.ru',seenAt:Date.now()}]} as typeof current;
+ for(const input of [[official,archived],[archived,official]]){
+  const offers=mergeOffers(input);assert.equal(offers.length,2);
+  const live=offers.find(code=>code.status==='official')!;assert.equal(live.expiresAt,undefined);assert.equal(live.sources.length,1);
+  assert.equal(offers.find(code=>code.status==='expired')?.expiresAt,archived.expiresAt);
+ }
+});

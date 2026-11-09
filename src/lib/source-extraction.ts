@@ -1,12 +1,11 @@
 import { createRequire } from 'node:module';
 import type { Company } from './companies';
-import { merchantAliases as names, normalizeMerchantName, isSeparateMerchantService } from './merchant-aliases';
+import { merchantAliases as names, normalizeMerchantName } from './merchant-aliases';
 import { foreignMerchantHeading, explicitCode, validCouponToken } from './promo-quality';
 import { codeKey, type PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, parsePromoDate, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 export function matchesMerchant(title: string, company: Company) {
-  if(isSeparateMerchantService(title,company.id))return false;
   const value = normalizeMerchantName(title);
   return [company.name,...names[company.id] ?? []].some(name => value.includes(normalizeMerchantName(name)));
 }
@@ -17,7 +16,7 @@ export function isChallengePage(html: string) {
   const body = $('body').text().replace(/\s+/g,' ').trim();
   // A CAPTCHA widget on a real shop page is not a blocked document.
   if (/^(?:\s*)(?:just a moment|access denied|проверка безопасности|проверка браузера|доступ ограничен)/i.test(heading)) return true;
-  if (/промокод|купон|coupon/i.test(heading) && $('article,.coupon,[data-coupon],.js-vv21-promocode-item,.t-rec').length) return false;
+  if (/промокод|купон|coupon/i.test(heading) && $('article,.coupon,[data-coupon],.js-vv21-promocode-item').length) return false;
   return body.length < 1800 && /(?:подтвердите|проверьте|confirm|verify).{0,60}(?:не бот|не робот|not a robot|human)|checking your browser|enable javascript and cookies to continue/i.test(body);
 }
 /** A login button in a shop header is normal; an explicit code access wall is not. */
@@ -88,7 +87,8 @@ export function extractCouponCards(html: string, url: string, company: Company, 
     // Coupon sites often display only a suffix before "show code" is clicked.
     // A three-character tail is not a full code just because it is alphanumeric.
     if (!explicit && (/masked|code-mask|code-tail|code-part/i.test(item.attr('class') ?? '') || /(?:открыть|показать)\s+промокод/i.test(card.text()))) return;
-    const heading = card.find('h2,h3,h4,[data-title],.coupon-title').first().text().replace(/\s+/g,' ').trim() || `Промокод ${company.name}`;
+    const titleNode = card.find('h2,h3,h4,[data-title],.coupon-title').first();
+    const heading = (titleNode.attr('data-title') ?? titleNode.text()).replace(/\s+/g,' ').trim() || `Промокод ${company.name}`;
     if (!heading || foreignMerchantHeading(heading,company.id) || !/промокод|купон|coupon|код\s+скидки|используйте\s+код|скидк|заказ|покупк|доставк/i.test(card.text())) return;
     const namedCode=item.is('[data-promocode],[data-promo-code],[data-coupon-code]');
     if(!namedCode&&!/промокод|код\s+(?:купона|скидки)|(?:promo|coupon)\s*code|(?:используйте|введите|примените)\s+код|use\s+code/i.test(card.text()))return;
@@ -109,7 +109,7 @@ export function extractCouponCards(html: string, url: string, company: Company, 
       if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(raw);if(diagnostics.reasons.length<5)diagnostics.reasons.push('Не распознаны даты одной из карточек');}
       return;
     }
-    const amount = heading.match(/(?:скидк[а-яё]*|выгод[а-яё]*)\s*[−–-]?\s*(\d[\d\s]*)\s*(?:₽|руб)/i)?.[1]?.replace(/\s/g,'');
+    const amount = heading.match(/(?:скидк[а-яё]*|выгод[а-яё]*|сэкономьте|экономия)\s*[−–-]?\s*(\d[\d\s]*)\s*(?:₽|руб)/i)?.[1]?.replace(/\s/g,'');
     const offers = parsePromoCodesFromHtml(JSON.stringify([{promoCode:raw,title:heading,conditions:[terms.slice(0,1500)],startsAt,expiresAt,discountAmount:amount}]),url,company.id,now,{diagnostics});
     for (const offer of offers) {
       if (explicitlyEnded || ended && (positions.get(el) ?? 0) > (positions.get(ended) ?? Infinity)) { offer.status = 'expired'; offer.invalidSince = now; }

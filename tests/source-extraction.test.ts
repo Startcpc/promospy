@@ -57,10 +57,6 @@ test('official VkusVill copy-button caption can change without losing the publis
   const changed = html.replace(/(class="[^"]*js-vv21-promocode-item__btn[^\"]*"[^>]*>)[^<]*/,'$1Скопировать');
   assert.ok(parsePublicOfficial(54,changed).some(code=>code.code==='1раз'));
 });
-test('official Magnit code is accepted as a standalone atom immediately after its label', () => {
-  const html = '<title>Промокоды Магнит</title><div class="t-rec"><div class="tn-atom">Промокод</div><div class="tn-atom">ДОСТАВКА25</div><div class="tn-atom">−25%</div><div class="tn-atom">Скидка на первый заказ от 1000₽</div><div class="tn-atom">в Магнит Экспрессе</div></div>';
-  const [code] = parsePublicOfficial(201,html);assert.equal(code.code,'ДОСТАВКА25');assert.equal(code.minOrder,1000);
-});
 test('pipeline retains official coupons when captcha is only a header script',async()=>{
   const html = readFileSync(new URL('./fixtures/vkusvill-official.html',import.meta.url),'utf8');
   const report = await searchMerchant(company,new AbortController().signal,async target=>target==='https://vkusvill.ru/promocodes/'?'<script src="/captcha.js"></script>'+html:'<title>Empty</title>');
@@ -139,8 +135,8 @@ test('invalid explicit dates in official metadata cannot become unlimited offers
  }
 });
 
-test('previously available Burger King coupons stay archived even with a future date',()=>{
- const html='<h1>Промокоды Бургер Кинг</h1><h2>Купоны на скидку в Бургер Кинг доступные ранее:</h2><article data-expires-at="2030-12-31"><h3>Скидка на заказ</h3><p>Промокод: ARCHIVEDBK</p></article>';
- const [code]=parseMerchantPage(html,'https://getcashback.ru/promocodes/burgerking/',getCompanyById(5)!);
+test('previously available VkusVill coupons stay archived even with a future date',()=>{
+ const html='<h1>Промокоды ВкусВилл</h1><h2>Купоны на скидку в ВкусВилл доступные ранее:</h2><article data-expires-at="2030-12-31"><h3>Скидка на заказ</h3><p>Промокод: ARCHIVEDVV</p></article>';
+ const [code]=parseMerchantPage(html,'https://getcashback.ru/promocodes/vkusvill/',getCompanyById(54)!);
  assert.equal(code.status,'expired');
 });

@@ -1,19 +1,27 @@
 import type { PromoCode } from './promocodes';
 import { companies } from './companies';
-import { merchantAliases, isSeparateMerchantService } from './merchant-aliases';
+import { merchantAliases } from './merchant-aliases';
 const compact=(text:string)=>text.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/[^\p{L}\p{N}]/gu,'');
 export function explicitCode(text:string){
-  return text.match(/(?:(?:промокод|код купона|код скидки|promo\s*code|coupon\s*code)\s*[:：]|(?:используйте|введите|примените|use|enter)\s+(?:промокод|код|code)\s*[:：]?)\s*["'«]?([\p{L}\p{N}][\p{L}\p{N}_-]{1,63})(?![\p{L}\p{N}_-])/iu)?.[1];
+  const match=text.match(/(?:(?:промокод|код купона|код скидки|promo\s*code|coupon\s*code)\s*[:：]|(?:используйте|введите|примените|use|enter)\s+(?:промокод|код|code)\s*[:：]?)\s*["'«]?([\p{L}\p{N}][^\s"'«»<>]*)/iu);
+  if(!match)return;
+  // Consume the entire token before validating. A regex limited to letters
+  // would turn ABC***, ABC… or ABC/123 into a fictional complete code ABC.
+  const raw=match[1],tail=text.slice(match.index!+match[0].length);
+  if(/[*•●…]|\.{2,}/u.test(raw)||/^\s*(?:[*•●…]|\.{2,}|\[(?:скрыт|masked|hidden))/iu.test(tail))return;
+  const code=raw.replace(/[.,;:!?)]+$/u,'');
+  return validCouponToken(code)?code:undefined;
 }
 export function validCouponToken(value:string){
-  return /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value)&&!/^[78]\d{10}$/.test(value)&&!/^(?:coupon|promocode|промокод|скопировать|copy|code|например|название|ваш|любой)$/i.test(value);
+  return /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value)&&!/^[78]\d{10}$/.test(value)&&!/^(?:coupon|promocode|промокод|код|скопировать|copy|code|например|название|ваш|любой|нет|отсутствует|недоступен|скрыт|скоро|none|null|undefined|unavailable|hidden|http|https|true|false)$/i.test(value);
 }
 export function foreignMerchantHeading(heading:string,companyId:number){
-  if(isSeparateMerchantService(heading,companyId))return true;
   const current=companies.find(company=>company.id===companyId);
   const normalized=compact(heading);
   if(current&&[current.name,...merchantAliases[companyId]??[]].some(name=>normalized.includes(compact(name))))return false;
-  return companies.some(company=>company.id!==companyId&&[company.name,...merchantAliases[company.id]??[]].some(name=>normalized.includes(compact(name))));
+  // Negative ownership evidence only: these names are never supported merchants,
+  // search seeds or discovery targets. Keep this independent of the product catalogue.
+  return /ozon|озон|wildberries|вайлдберриз|яндекс|yandex|магнит|magnit|пят[её]рочка|5ka|перекр[её]сток|perekrestok|лента|lenta|burger\s*king|бургер\s*кинг|tanuki|тануки|крошка\s*картошка|вкусно\s*[-—–]?\s*и\s*точка/i.test(heading);
 }
 export function promoAudience(code:Pick<PromoCode,'description'|'conditions'>){
   const text=[code.description,...code.conditions].join(' ');
@@ -23,6 +31,10 @@ export function promoAudience(code:Pick<PromoCode,'description'|'conditions'>){
 }
 export const restrictionList=(values:string[]|undefined)=>[...new Set((values??[]).map(value=>value.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ').trim()).filter(Boolean))].sort();
 export function offerConflict(a:PromoCode,b:PromoCode){
+  // Public catalogues retain old campaigns after a merchant reuses a code.
+  // An archived copy must never donate its old deadline to a current offer.
+  const ended=(code:PromoCode)=>code.status==='expired'||code.expiresAt!==undefined&&code.expiresAt<=Date.now();
+  if(ended(a)!==ended(b))return true;
   for(const key of ['minOrder','startsAt','expiresAt','maxDiscount','channel'] as const)if(a[key]!==undefined&&b[key]!==undefined&&a[key]!==b[key])return true;
   if(a.appOnly!==undefined&&b.appOnly!==undefined&&a.appOnly!==b.appOnly)return true;
   for(const key of ['regions','categories'] as const)if(a[key]?.length&&b[key]?.length&&JSON.stringify(restrictionList(a[key]))!==JSON.stringify(restrictionList(b[key])))return true;

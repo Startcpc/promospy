@@ -2,7 +2,6 @@
 import { readFileSync, appendFileSync } from 'node:fs';
 const fixtures = new Map([
   ['https://vkusvill.ru/promocodes/', readFileSync(new URL('../fixtures/vkusvill-official.html',import.meta.url),'utf8')],
-  ['https://promo.magnit.ru/', readFileSync(new URL('../fixtures/magnit-official.html',import.meta.url),'utf8')],
 ]);
 const original = globalThis.fetch;
 globalThis.fetch = async (input,init) => {

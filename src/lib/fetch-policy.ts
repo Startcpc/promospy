@@ -9,8 +9,9 @@ export const sourceHost = (value: string) => new URL(value).hostname.toLowerCase
 export function safeSource(value: string, domains: readonly string[]): boolean {
   try {
     const url = new URL(value);
+    const pathname = decodeURIComponent(url.pathname).replace(/\\/g,'/');
     return validSourceUrl(value) && !url.port && !isIP(url.hostname) && !/(?:^|\.)localhost(?:\.localdomain)?$/.test(url.hostname) && domains.includes(sourceHost(value)) &&
-      !/(?:^|\/)(?:login|signin|account|cart|checkout|basket|oauth|authorize|register)(?:\/|$)/i.test(url.pathname) &&
+      !/(?:^|\/)(?:login|signin|account|cart|checkout|basket|oauth|authorize|register)(?:\/|$)/i.test(pathname) &&
       ![...url.searchParams.keys()].some(key=>/^(?:access_token|token|api[_-]?key|client_secret|password|session(?:id)?)$/i.test(key));
   } catch {return false;}
 }

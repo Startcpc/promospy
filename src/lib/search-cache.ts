@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { getCompanyById } from './promocodes';
 import type { SearchReport } from './web-search';
 import { validPromo, validReport } from './promo-validation';
+import { mergeOffers } from './offer-identity';
 
 export const MAX_CACHE_BYTES = 2_000_000;
 export type CachedSearch = {companyId: number; at: number; report: SearchReport};
@@ -13,11 +14,18 @@ export function parseSearchCache(raw: string, id: number, now = Date.now()): Cac
   try {
     const item = JSON.parse(raw) as CachedSearch;
     if (!item || item.companyId !== id || !validReport(item.report) || !Number.isFinite(item.at) || item.at < 0 || item.at > now + 60000) return null;
-    const codes = item.report.codes.filter(code => validPromo(code,id));
+    const valid = item.report.codes.filter(code => validPromo(code,id));
+    const duplicateIds = new Set(valid.map(code=>code.id)).size < valid.length;
+    const codes = duplicateIds ? mergeOffers(valid) : valid;
     if (item.report.codes.length && !codes.length) return null;
-    return {...item,report:{...item.report,codes,...(codes.length !== item.report.codes.length ? {phase:undefined} : {})}};
+    return {...item,report:{...item.report,codes,...(duplicateIds || codes.length !== item.report.codes.length ? {phase:undefined} : {})}};
   } catch {return null;}
 }
 export async function readSearchCache(id: number, directory = searchDirectory()): Promise<CachedSearch | null> {
-  try {return parseSearchCache(await readFile(path.join(directory,`${id}.json`),'utf8'),id);} catch {return null;}
+  if (!getCompanyById(id)) return null;
+  try {
+    const filename=path.join(directory,`${id}.json`),info=await stat(filename);
+    if(!info.isFile()||info.size>MAX_CACHE_BYTES)return null;
+    return parseSearchCache(await readFile(filename,'utf8'),id);
+  } catch {return null;}
 }

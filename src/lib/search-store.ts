@@ -34,6 +34,7 @@ function mergeWithSaved(fresh: PromoCode[], old: PromoCode[]) {
   return mergeOffers([...fresh,...old]).slice(0,100);
 }
 export async function searchState(id: number): Promise<MerchantSearchState> {
+  if (!getCompanyById(id)) throw new Error('Магазин не найден');
   for(let attempt=0;attempt<5;attempt++){
     const revision=revisions.get(id)??0;
     const result=await cached(id),interrupted=await marker(id);
@@ -62,10 +63,11 @@ function resultCodes(report: SearchReport, previous: PromoCode[]) {
     const sources = code.sources.filter(source => !refreshed.has(sourceIdentity(source.url)));
     const officialSource = code.evidence?.sourceUrl;
     const keepsOfficial = code.status === 'official' && officialSource && sources.some(source => sourceIdentity(source.url) === sourceIdentity(officialSource));
-    return sources.length ? [{...code,sources,...(!keepsOfficial && code.status !== 'expired' && code.status !== 'rejected' ? {status:'found' as const,verificationDetails:'Сохранено с предыдущего чтения. Свежая публикация не подтверждена.'} : {})}] : [];
+    return sources.length ? [{...code,sources,cached:true,...(!keepsOfficial && code.status !== 'expired' && code.status !== 'rejected' ? {status:'found' as const,verificationDetails:'Сохранено с предыдущего чтения. Свежая публикация не подтверждена.'} : {})}] : [];
   });
   const byId = new Map(retained.map(code => [code.id,code]));
-  const fresh = report.codes.map(code => {
+  const fresh = report.codes.filter(code => code.companyId === 54).map(code => {
+    code = {...code,cached:false};
     const original=previous.find(old=>old.code===code.code&&!offerConflict(old,code));
     if(original)code={...code,found:Math.min(code.found,original.found)};
     const saved = byId.get(code.id);

@@ -28,7 +28,20 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   const context=await browser.newContext({viewport:{width:1280,height:1000}}),page=await context.newPage();
   const errors:string[]=[],api:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/'))api.push(request.url());});
   await page.goto(base,{waitUntil:'networkidle'});assert.equal(api.length,0);assert.equal(await page.locator('article').count(),0);
-  assert.equal(await page.getByLabel('Поиск предложений',{exact:true}).count(),0);
+  assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),'/favicon.svg');
+  assert.equal((await fetch(base+'/favicon.svg')).status,200);
+  assert.equal(await page.getByLabel('Поиск магазинов',{exact:true}).count(),0);
+  assert.equal(await page.locator('a[href^="/company/"]').count(),1);
+  assert.equal(await page.getByText(/Ozon|Магнит|Wildberries|Burger King/).count(),0);
+  for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+  for(const id of [5,102,201,202,203,204,205,206,207,208,301,302,999]){
+   for(const method of ['GET','POST'])assert.equal((await fetch(base+'/api/scan/'+id,{method})).status,404);
+  }
+  assert.equal((await fetch(base+'/api/promocodes/saved?ids=201:OLD')).status,200);
+  assert.deepEqual((await(await fetch(base+'/api/promocodes/saved?ids=201:OLD')).json()).codes,[]);
+  for(const ids of ['',',','<script>'])assert.equal((await fetch(base+'/api/promocodes/saved?ids='+encodeURIComponent(ids))).status,400);
+  await page.goto(base+'/company/201');await page.getByRole('heading',{name:'Страница не найдена',exact:true}).waitFor();
+  await page.goto(base);
   const merchant=page.getByRole('link',{name:'Промокоды ВкусВилл',exact:true});await merchant.hover();assert.equal(await merchant.evaluate(el=>getComputedStyle(el).transform),'none');await merchant.click();
   await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Обновить',exact:true}).isEnabled(),true);
@@ -47,18 +60,18 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   await page.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();await page.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
   // Opening a merchant starts one automatic search; manual refresh remains immediate.
   let posts=0;
-  await page.route('**/api/scan/201*',route=>{
+  await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST')posts++;
    return route.fulfill({json:{codes:[],status:'idle',lastScan:null,nextScan:null,error:null,log:[]}});
   });
-  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
   assert.equal(await page.getByText(/Нажмите.*Найти промокоды/).count(),0);
   await page.getByRole('button',{name:'Обновить',exact:true}).click();assert.equal(posts,2);
   assert.deepEqual(errors,[]);
   // Bundled logos paint with JavaScript disabled, without letter placeholders.
   const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();
   await nativePage.goto(base,{waitUntil:'networkidle'});
-  const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),12);
+  const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),1);
   assert.ok(await logos.evaluateAll(images=>images.every(img=>(img as HTMLImageElement).naturalWidth>0&&getComputedStyle(img).opacity==='1')));await native.close();
   const blocked=await browser.newContext();await blocked.addInitScript(()=>{const original=Storage.prototype.setItem;Object.defineProperty(window,'restorePromoStorage',{value:()=>{Storage.prototype.setItem=original;}});Storage.prototype.setItem=()=>{throw Error('storage disabled');};});
   const blockedPage=await blocked.newPage();await blockedPage.goto(base+'/company/54',{waitUntil:'networkidle'});
@@ -70,12 +83,21 @@ test('home makes no scans; native links and favorites work without Prisma, keys 
   await blockedPage.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();
   await blockedPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
   const secondTab=await blocked.newPage();await secondTab.goto(base);
-  await secondTab.evaluate(()=>{Reflect.get(window,'restorePromoStorage')();localStorage.setItem('promospy:saved-promos:v1',JSON.stringify([{id:'54:SAVE10',companyId:54,code:'SAVE10',savedAt:Date.now()}]));});
+  await secondTab.evaluate(()=>{Reflect.get(window,'restorePromoStorage')();localStorage.setItem('promospy:saved-promos:vkusvill:v2',JSON.stringify([{id:'54:SAVE10',companyId:54,code:'SAVE10',savedAt:Date.now()}]));});
   await blockedPage.getByRole('button',{name:'Условия SAVE10',exact:true}).waitFor();
   await secondTab.close();
   // Unicode IDs must not produce an oversized GET URL.
+  const migration=await browser.newContext();const migrationPage=await migration.newPage();await migrationPage.goto(base);
+  const legacy=JSON.stringify([{id:'54:SAVE10',companyId:54,code:'SAVE10',savedAt:100},{id:'201:OLD',companyId:201,code:'OLD',savedAt:100}]);
+  await migrationPage.evaluate(raw=>localStorage.setItem('promospy:saved-promos:v1',raw),legacy);
+  await migrationPage.goto(base+'/saved');await migrationPage.getByRole('heading',{name:'Избранное (1)',exact:true}).waitFor();
+  assert.equal(await migrationPage.getByText('OLD',{exact:true}).count(),0);
+  await migrationPage.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();
+  await migrationPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
+  assert.equal(await migrationPage.evaluate(()=>localStorage.getItem('promospy:saved-promos:v1')),legacy);
+  await migrationPage.reload();await migrationPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();await migration.close();
   const batches=await browser.newContext();
-  await batches.addInitScript(()=>{localStorage.setItem('promospy:saved-promos:v1',JSON.stringify(Array.from({length:100},(_,i)=>({id:`54:A${i}${'Ж'.repeat(55)}`,companyId:54,code:`A${i}${'Ж'.repeat(55)}`,savedAt:Date.now()}))));});
+  await batches.addInitScript(()=>{localStorage.setItem('promospy:saved-promos:vkusvill:v2',JSON.stringify(Array.from({length:100},(_,i)=>({id:`54:A${i}${'Ж'.repeat(55)}`,companyId:54,code:`A${i}${'Ж'.repeat(55)}`,savedAt:Date.now()}))));});
   const batchPage=await batches.newPage(),lookups:string[]=[];
   batchPage.on('request',request=>{if(request.url().includes('/api/promocodes/saved?'))lookups.push(request.url());});
   await batchPage.goto(base+'/saved');
@@ -179,16 +201,16 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
   const page=await browser.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.clock.install({time:new Date()});
   let posts=0;const deadline=Date.now()+10000;
-  await page.route('**/api/scan/201*',route=>{
+  await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST')posts++;
    return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline-900000,nextScan:posts>1?deadline+900000:deadline,error:null,log:[]}});
   });
-  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
   await page.clock.fastForward(31000);await page.waitForTimeout(100);
   assert.equal(posts,2,'an open page must initiate a new search after its cache expires');
   let attempts=0;const retryUrls:string[]=[];
-  await page.unroute('**/api/scan/201*');
-  await page.route('**/api/scan/201*',route=>{
+  await page.unroute('**/api/scan/54*');
+  await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST'){retryUrls.push(route.request().url());if(++attempts===1)return route.fulfill({status:503,json:{error:'Temporary API failure'}});}
    return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline,nextScan:deadline+900000,error:null,log:[]}});
   });
@@ -196,14 +218,14 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
   await page.clock.fastForward(3100);await page.waitForTimeout(100);
   assert.equal(attempts,2);assert.ok(retryUrls.every(url=>new URL(url).searchParams.get('refresh')==='1'));
   // A wrong wall clock must not turn a fifteen-minute TTL into a POST loop.
-  await page.unroute('**/api/scan/201*');posts=0;
+  await page.unroute('**/api/scan/54*');posts=0;
   const serverTime=Date.now();
-  await page.route('**/api/scan/201*',route=>{
+  await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST')posts++;
    return route.fulfill({json:{codes:[],status:'idle',lastScan:serverTime,nextScan:serverTime+900000,serverTime,error:null,log:[]}});
   });
   await page.clock.setSystemTime(new Date('2030-01-01T00:00:00Z'));
-  await page.goto(base+'/company/201',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
   await page.clock.fastForward(31000);await page.waitForTimeout(100);assert.equal(posts,1);
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();server.kill();}
@@ -275,7 +297,7 @@ test('favorites transfer survives reload and invalid files; hidden and offline p
  }finally{await browser?.close();server.kill();}
 });
 
-test('Burger King source failures do not prevent a public fallback from appearing and refreshing',async()=>{
+test('ВкусВилл source failures do not prevent a public fallback from appearing and refreshing',async()=>{
  const {readFileSync}=await import('node:fs');
  const {APP_VERSION}=await import('../src/lib/app-version');
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-source-failures-')),base='http://127.0.0.1:3143';
@@ -289,18 +311,18 @@ test('Burger King source failures do not prevent a public fallback from appearin
   const health=await(await fetch(base+'/api/health')).json();assert.equal(health.version,APP_VERSION);
   browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
   const page=await browser.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(base+'/company/5');await page.getByRole('button',{name:'Сохранить TESTBK20',exact:true}).waitFor();
+  await page.goto(base+'/company/54');await page.getByRole('button',{name:'Сохранить TESTVV20',exact:true}).waitFor();
   for(let i=0;i<100&&await page.getByRole('button',{name:'Обновить',exact:true}).isDisabled();i++)await page.waitForTimeout(100);
   await page.getByText('Подробнее об обновлении',{exact:true}).click();
   await page.getByText('PromoSpy '+APP_VERSION,{exact:true}).waitFor();
   assert.ok(await page.getByText('Пропущен:',{exact:false}).count()>0);
   assert.ok(await page.getByText('HTTP 403',{exact:false}).count()>0);
-  const source='https://promokodi.ru/store/burger-king/';
+  const source='https://promokodi.ru/store/vkusvill/';
   const before=readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length;assert.ok(before>0);
   await page.getByRole('button',{name:'Обновить',exact:true}).click();
   for(let i=0;i<100;i++){if(readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length>before)break;await page.waitForTimeout(100);}
   assert.ok(readFileSync(requestLog,'utf8').split('\n').filter(url=>url===source).length>before);
-  await page.getByRole('button',{name:'Сохранить TESTBK20',exact:true}).click();await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
-  await page.getByRole('button',{name:'Условия TESTBK20',exact:true}).waitFor();assert.deepEqual(errors,[]);
+  await page.getByRole('button',{name:'Сохранить TESTVV20',exact:true}).click();await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
+  await page.getByRole('button',{name:'Условия TESTVV20',exact:true}).waitFor();assert.deepEqual(errors,[]);
  }finally{await browser?.close();server.kill();}
 });

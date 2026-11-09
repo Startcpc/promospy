@@ -57,9 +57,6 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
   if (!validCouponToken(code)) return;
   const description = cleanText(field(record, ["title", "description", "name"]) ?? `Промокод ${code}`);
   if (company && foreignMerchantHeading(description,companyId)) return;
-  // Some aggregators attach sibling restaurants to the parent shop even in structured metadata.
-  // Keep these source-specific exclusions explicit instead of asking an LLM to guess validity.
-  if (companyId === 301 && /(?:твоя\s+пицца|(?:^|[^а-яё])[её]рш(?:$|[^а-яё]))/i.test(description)) return;
   const rawConditions = record.conditions ?? record.terms;
   const conditions = (Array.isArray(rawConditions) ? rawConditions : typeof rawConditions === "string" ? [rawConditions] : [])
     .filter((v): v is string => typeof v === "string").slice(0,20).map(cleanText).filter(Boolean);
@@ -154,9 +151,10 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
     const el = $(element);
     if(el.parents("template,[hidden],[aria-hidden=\"true\"],[style*=\"display:none\"],[style*=\"display: none\"]").length)return;
     const card = el.closest("[data-coupon], [data-offer], .coupon, .promocode, .offer");
+    const title = card.find("[data-title], h2, h3, .coupon-title").first();
     records.push({
       promoCode: el.attr("data-promocode") ?? el.attr("data-promo-code") ?? el.attr("data-coupon-code"),
-      title: card.find("[data-title], h2, h3, .coupon-title").first().text() || el.attr("data-title"),
+      title: title.attr('data-title') ?? (title.text() || el.attr("data-title")),
       conditions: card.find("[data-conditions], .conditions").first().text(),
       expiresAt: el.attr("data-expires-at") ?? card.attr("data-expires-at"),
     });

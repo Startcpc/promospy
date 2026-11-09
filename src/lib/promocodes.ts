@@ -39,6 +39,7 @@ export type PromoCode = {
   evidence?: VerificationEvidence;
   extraction?: {method:"card"|"structured"|"official"|"local-ai";text:string};
   confidence?: {score:number;level:"low"|"medium"|"high";reasons:string[]};
+  cached?: boolean;
   maxDiscount?: number;
   appOnly?: boolean;
   regions?: string[];

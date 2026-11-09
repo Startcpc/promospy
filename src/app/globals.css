@@ -45,16 +45,11 @@ a, button, input, select, summary, label { touch-action: manipulation; }
 .letter-ink { display: inline-block; transition: transform .18s, color .18s; }
 .animated-word > span:hover .letter-ink { transform: translateY(-10px) rotate(-8deg); color: #ff6b24; }
 @keyframes letter-arrive { from { opacity: 0; transform: translateY(16px) rotate(7deg); } to { opacity: 1; transform: none; } }
-.retro-button, .retro-filter { box-shadow: 3px 3px 0 #16213e; }
-.retro-button, .retro-filter, .merchant-card { transition: background-color .08s, border-color .08s, box-shadow .08s; }
-.retro-button:hover:not(:disabled), .retro-filter:hover { box-shadow: 5px 5px 0 #16213e; }
-.retro-button:active:not(:disabled), .retro-filter:active { box-shadow: 1px 1px 0 #16213e; }
-.retro-button:active:not(:disabled), .retro-filter:active, .merchant-card:active { background-color: #fff0de; }
-.merchant-card, .promo-card, .scan-panel { box-shadow: 4px 4px 0 #16213e; }
-@media (hover: hover) and (pointer: fine) {
-  .merchant-card:hover { border-color: #16213e; box-shadow: 7px 9px 0 #2458e8; }
-  .merchant-card:hover img { transform: scale(1.06); transition: transform .18s; }
-}
+.retro-button { box-shadow: 3px 3px 0 #16213e; }
+.retro-button { transition: background-color .08s, border-color .08s, box-shadow .08s; }
+.retro-button:hover:not(:disabled) { box-shadow: 5px 5px 0 #16213e; }
+.retro-button:active:not(:disabled) { box-shadow: 1px 1px 0 #16213e; background-color: #fff0de; }
+.promo-card, .scan-panel { box-shadow: 4px 4px 0 #16213e; }
 .retro-star { position: absolute; inset: 8%; background: #ff6b24; clip-path: polygon(50% 0%,60% 18%,80% 7%,81% 29%,100% 35%,84% 50%,100% 65%,80% 71%,80% 94%,59% 82%,50% 100%,40% 82%,20% 94%,20% 72%,0% 65%,16% 50%,0% 35%,20% 29%,20% 7%,40% 18%); transition: transform .6s ease; }
 .retro-stamp { position: relative; transform: rotate(-7deg); box-shadow: 6px 6px 0 #16213e; transition: transform .4s; }
 .retro-poster:hover .retro-star { transform: rotate(35deg); }
@@ -63,5 +58,5 @@ a, button, input, select, summary, label { touch-action: manipulation; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .animated-word > span { opacity: 1; animation: none; }
-  .merchant-card:hover img, .retro-brand:hover, .retro-poster:hover .retro-star, .retro-poster:hover .retro-stamp, .animated-word > span:hover .letter-ink { transform: none; }
+  .retro-brand:hover, .retro-poster:hover .retro-star, .retro-poster:hover .retro-stamp, .animated-word > span:hover .letter-ink { transform: none; }
 }

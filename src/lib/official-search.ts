@@ -6,12 +6,11 @@ const { load } = createRequire(import.meta.url)("cheerio") as typeof import("che
 
 export const PUBLIC_OFFICIAL_URLS: Record<number, string> = {
   54: "https://vkusvill.ru/promocodes/",
-  201: "https://promo.magnit.ru/",
 };
 export function hasPublicOfficialMarkup(companyId: number, html: string) {
   const $ = load(html);
   if (companyId === 54) return $('.js-vv21-promocode-item').length > 0;
-  return companyId === 201 && $('.t-rec .tn-atom').toArray().some(element => $(element).text().trim() === 'Промокод');
+  return false;
 }
 const text = (value: string) => value.replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim();
 function officialCode(companyId: number, code: string, discount: string, conditions: string[], now: number): PromoCode {
@@ -48,28 +47,6 @@ export function parsePublicOfficial(companyId: number, html: string, now = Date.
       if (!code || buttonIsCode && code !== button || !/\d+.*(?:руб|₽|%)/.test(discount) || !terms.length) throw new Error("Неполная карточка ВкусВилл; обновление отменено");
       codes.push(officialCode(companyId, code, discount, terms, now));
     });
-  } else if (companyId === 201) {
-    if (!/промокоды\s+магнит/i.test(text($("title").text()))) throw new Error("Не распознана страница промокодов Магнит");
-    // The official landing has one promotion per Tilda record, with a standalone «Промокод» label.
-    $(".t-rec").each((_, element) => {
-      const record = $(element);
-      const atoms = record.find(".tn-atom").map((_, e) => {
-        const fragment = load($(e).html() ?? "");
-        fragment("br").replaceWith(" ");
-        return text(fragment.root().text());
-      }).get().filter(Boolean);
-      if (!atoms.includes("Промокод")) return;
-      const codeAfterLabel = atoms[atoms.indexOf("Промокод") + 1];
-      const buttons = [...new Set(record.find(".tn-atom__button-text").map((_, e) => text($(e).text())).get().filter(value => /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value)))];
-      if (!buttons.length && /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(codeAfterLabel ?? "")) buttons.push(codeAfterLabel);
-      const discounts = atoms.filter(value => /^[−–-]?\d[\d\s]*(?:[.,]\d{1,2})?\s*(?:%|₽|руб\.?|рублей)$/i.test(value));
-      const terms = atoms.filter(value => /^Скидка на /i.test(value));
-      const services = atoms.filter(value => /^в Магнит /i.test(value));
-      if (buttons.length !== 1 || discounts.length !== 1 || terms.length !== 1 || services.length !== 1) throw new Error("Изменилась структура акции Магнит; условия нельзя однозначно связать с кодом");
-      const extraTerms = atoms.filter(value => !["Промокод", "В приложение", ...buttons, ...discounts, ...terms, ...services].includes(value));
-      codes.push(officialCode(companyId, buttons[0], discounts[0], [...terms, ...services, ...extraTerms], now));
-    });
-    if (!codes.length || codes.length > 100) throw new Error("Не распознан список промокодов Магнит");
   } else throw new Error("Нет адаптера официального источника");
   const byCode = new Map<string, PromoCode>();
   for (const offer of codes) {

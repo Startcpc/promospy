@@ -74,7 +74,6 @@ export default function SavedPage() {
     return () => { stopWatching();controller.abort(); clearTimeout(timer); };
   }, [idsKey, requestKey]);
 
-  const byId = new Map((current?.codes ?? []).map(code => [code.id, code]));
   const filtered = items.filter(item => {
     const offer = resolveSavedOffer(item,current?.codes??[]) ?? item.snapshot;
     if (activeOnly && (!offer || effectiveStatus(offer, now) === "expired" || offer.startsAt !== undefined && offer.startsAt > now)) return false;
@@ -82,7 +81,7 @@ export default function SavedPage() {
     return query.trim().toLocaleLowerCase("ru").split(/\s+/).every(word => terms.includes(word));
   });
   return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
-    <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Все компании</Link>
+    <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm"><ArrowLeft aria-hidden="true" className="h-4 w-4" />На главную</Link>
     <header className="mb-6">
       <h1 className="flex items-center gap-3 text-3xl font-bold"><Heart aria-hidden="true" className="h-7 w-7 text-orange-600" />Избранное{hydrated && items.length > 0 ? ` (${items.length})` : ""}</h1>
       <p className="mt-3 text-sm text-muted-foreground">Ваши коды — в одном месте. Избранное хранится в этом браузере.</p>
@@ -95,7 +94,7 @@ export default function SavedPage() {
       <Link href="/" className="mt-5 inline-block rounded-lg bg-foreground px-4 py-2 text-sm text-background">Найти промокоды</Link>
     </div> : <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input aria-label="Поиск в избранном" value={query} onChange={event => setQuery(event.target.value)} placeholder="Магазин, код или условия" className="min-w-48 flex-1 rounded-lg border bg-background px-3 py-2 text-sm" />
+        <input aria-label="Поиск в избранном" value={query} onChange={event => setQuery(event.target.value)} placeholder="Код или условия" className="min-w-48 flex-1 rounded-lg border bg-background px-3 py-2 text-sm" />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={activeOnly} onChange={event => setActiveOnly(event.target.checked)} />Без истёкших</label>
         <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Обновить данные</button>
       </div>
