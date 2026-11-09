@@ -16,16 +16,15 @@ export type PromotionParser={
 };
 export const promotionParsers:PromotionParser[]=[
   {name:'vkusvill-public-cards',hosts:['vkusvill.ru'],companyId:54,recognizes:html=>hasPublicOfficialMarkup(54,html),parse:(html,url,now)=>parsePublicOfficial(54,html,now).map(code=>({...code,sources:[{url,name:new URL(url).hostname,seenAt:now}],evidence:code.evidence?{...code.evidence,sourceUrl:url}:undefined}))},
-  {name:'magnit-public-cards',hosts:['promo.magnit.ru','magnit.ru'],companyId:201,recognizes:html=>hasPublicOfficialMarkup(201,html),parse:(html,url,now)=>parsePublicOfficial(201,html,now).map(code=>({...code,sources:[{url,name:new URL(url).hostname,seenAt:now}],evidence:code.evidence?{...code.evidence,sourceUrl:url}:undefined}))},
 ];
 export function sourceParser(company:Company,url:string,html:string){
   return promotionParsers.find(parser=>parser.companyId===company.id&&parser.hosts.includes(sourceHost(url))&&parser.recognizes(html));
 }
-/** Add a merchant or an observed source URL here; never add coupon values. */
+/** Only observed public VkusVill URLs; never add coupon values. */
 export const publicSources:SourceAdapter={
   id:'public-promotions',
   officialUrls(company){
-    const primary=PUBLIC_OFFICIAL_URLS[company.id]??({5:'https://burgerkingrus.ru/coupons/',302:'https://www.kartoshka.com/actions/'} as Record<number,string>)[company.id];
+    const primary=PUBLIC_OFFICIAL_URLS[company.id];
     return [...new Set([primary,company.website].filter((url):url is string=>!!url))];
   },
   seedUrls(company){

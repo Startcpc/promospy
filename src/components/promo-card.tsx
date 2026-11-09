@@ -52,6 +52,7 @@ export function PromoCard({ code }: { code: PromoCode }) {
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
       </button>
     </div>
+    {code.cached && <p className="mt-2 text-xs text-amber-800">Сохранено ранее · источник не обновлён</p>}
     {copied && <p role="status" className="mt-2 text-xs text-blue-700">Код скопирован</p>}
     {copyError && <p role="alert" className="mt-2 text-xs text-red-600">Не удалось скопировать. Выделите код вручную.</p>}
     {code.sources[0] && <a href={code.sources[0].url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm text-blue-800 underline">{code.sources[0].name}<ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}

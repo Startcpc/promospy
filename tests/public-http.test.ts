@@ -150,3 +150,18 @@ test('the shared queue enforces both host and global limits without starving ano
   })));
   assert.equal(max,3);
 });
+
+test('encoded private paths and malformed percent escapes cannot pass the public URL filter',()=>{
+ for(const path of ['/%61ccount/','/foo%2Fcheckout/','/%6cogin','/%ZZ','/cart%5Ccheckout'])assert.equal(safeSource('https://example.org'+path,domains),false,path);
+ assert.equal(safeSource('https://example.org/actions/%D0%B0%D0%BA%D1%86%D0%B8%D1%8F/',domains),true);
+});
+test('repeated transient failures trip a circuit and later calls cannot hammer the host',async()=>{
+ let calls=0;const http=client(async()=>{calls++;return new Response('busy',{status:503});});
+ await assert.rejects(http.readText(url,domains,AbortSignal.timeout(2000),options));assert.equal(calls,3);
+ await assert.rejects(http.readText(url+'/other',domains,AbortSignal.timeout(2000),options),error=>error instanceof SourceError&&error.code==='circuit');
+ assert.equal(calls,3);
+});
+test('broken compressed sitemap data fails within its decompression bound',async()=>{
+ const http=client(async()=>new Response(Uint8Array.from([0x1f,0x8b,0x08,0,1,2]),{headers:{'content-type':'application/gzip'}}),{retries:0});
+ await assert.rejects(http.readText(url,domains,AbortSignal.timeout(2000),{robots:false,kind:'sitemap'}),error=>error instanceof SourceError&&error.code==='size');
+});

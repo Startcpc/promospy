@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { PromoCode } from "@/lib/promocodes";
-import { MAX_SAVED_PROMOS, parseSavedPromos, importSavedPromos, savedOfferMatches, SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
+import { MAX_SAVED_PROMOS, parseSavedPromos, importSavedPromos, savedOfferMatches, SAVED_PROMOS_KEY, LEGACY_SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
 
 const CHANGED_EVENT = "promospy:saved-promos-changed";
 const EMPTY: SavedPromo[] = [];
@@ -13,13 +13,13 @@ const serverSnapshot = () => EMPTY;
 function snapshot() {
   if (memoryOnly) return cached;
   try {
-    const raw = window.localStorage.getItem(SAVED_PROMOS_KEY);
+    const raw = window.localStorage.getItem(SAVED_PROMOS_KEY) ?? window.localStorage.getItem(LEGACY_SAVED_PROMOS_KEY);
     if (raw !== cachedRaw) { cachedRaw = raw; cached = parseSavedPromos(raw); }
   } catch { /* Reading storage may be disabled; rendering should still work. */ }
   return cached;
 }
 function subscribe(listener: () => void) {
-  const onStorage = (event: StorageEvent) => { if (event.key === null || event.key === SAVED_PROMOS_KEY) listener(); };
+  const onStorage = (event: StorageEvent) => { if (event.key === null || event.key === SAVED_PROMOS_KEY || event.key === LEGACY_SAVED_PROMOS_KEY) listener(); };
   window.addEventListener("storage", onStorage);
   window.addEventListener(CHANGED_EVENT, listener);
   return () => { window.removeEventListener("storage", onStorage); window.removeEventListener(CHANGED_EVENT, listener); };
@@ -58,5 +58,5 @@ function storeSavedPromos(next: unknown[]): string | null {
 }
 export function importFavorites(raw: string) {
   const result = importSavedPromos(raw,snapshot());
-  return {added:result.added,warning:storeSavedPromos(result.items)};
+  return {added:result.added,skipped:result.skipped,warning:storeSavedPromos(result.items)};
 }

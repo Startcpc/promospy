@@ -15,19 +15,18 @@ const now=Date.parse('2026-11-08T12:00:00Z');
 // All values below are synthetic. These documents never enter the runtime cache.
 const table=(rows:string,headers='<th>Промокод</th><th>Условия</th><th>Действует до</th>')=>'<h1>Промокоды ВкусВилл</h1><table><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table>';
 const row=(code='TABLE20',terms='Скидка 20% на заказ от 1500 рублей',date='30.11.2026')=>`<tr><td>${code}</td><td>${terms}</td><td>${date}</td></tr>`;
-test('catalogue has 20 independent domains and a concrete public URL for each',()=>{
-  assert.equal(PUBLIC_CATALOGUES.length,20);assert.equal(new Set(SEARCH_DOMAINS).size,20);
+test('catalogue has five independent domains and a concrete public URL for each',()=>{
+  assert.equal(PUBLIC_CATALOGUES.length,5);assert.equal(new Set(SEARCH_DOMAINS).size,5);
   for(const source of PUBLIC_CATALOGUES){const pages=Object.values(source.pages).flat();assert.ok(pages.length);assert.ok(pages.every(page=>safeSource(page,[source.domain])));}
 });
 test('closed sources and paid voucher shops cannot re-enter through discovery',()=>{
   for(const domain of [...EXCLUDED_CATALOGUES.map(source=>source.domain),'biglion.ru','gilmon.ru','dtf.ru','vc.ru'])assert.ok(!SEARCH_DOMAINS.includes(domain));
 });
-test('each shop keeps public candidates and source paths are not accidentally shared',()=>{
-  for(const merchant of companies)assert.ok(catalogueUrls(merchant.id).length>=2,merchant.name);
-  assert.ok(catalogueUrls(201).length>=10);assert.ok(catalogueUrls(54).length>=8);
-  assert.ok(catalogueUrls(5).length>=9,'Burger King has independent fallback pages');
-  assert.ok(!catalogueUrls(54).some(page=>page.includes('/vkysmill')));
-  assert.ok(catalogueUrls(208).includes('https://promokodi.ru/store/ozon-ru/'));
+test('only VkusVill has public candidates',()=>{
+  assert.deepEqual(companies.map(company=>company.id),[54]);
+  assert.equal(catalogueUrls(54).length,5);
+  for(const id of [5,201,208,999])assert.deepEqual(catalogueUrls(id),[]);
+  for(const source of PUBLIC_CATALOGUES)assert.deepEqual(Object.keys(source.pages),['54']);
 });
 test('table code retains its conditions, source, expiry and unverified status',()=>{
   const [code]=parseMerchantPage(table(row()),url,company,now);
@@ -159,4 +158,20 @@ test('GetCashback popular coupons cannot leak other merchants with the same card
     const html=getcashbackHtml+heading+getcashbackHtml.replaceAll('PUBLIC600','FOREIGN600').replaceAll('ARCHIVE200','FOREIGN200');
     assert.deepEqual(parseMerchantPage(html,getcashbackUrl,company,now).map(code=>code.code).sort(),['ARCHIVE200','PUBLIC600']);
   }
+});
+
+// Reduced observed Promokod.com structure; coupon values are synthetic.
+const promokodPage=(code='FULLCODE20',owner='ВкусВилл')=>`<h1>Промокоды ВкусВилл</h1><div class="pk-store-tile"><div class="coupon-wrap" data-code="${code}" data-store-name="${owner}" data-title="Сэкономьте 300 рублей при заказе от 1500 рублей!">
+<div class="coupon"><h3 class="coupon-title">Сэкономьте 300 рублей при заказе от 1500 рублей!</h3><div class="coupon-meta">Проверено · Применен 167 раз · Подробнее</div><div class="valid"><span class="v-full">Действует до 30 ноября 2026</span><span class="v-short">До 30 ноября 2026</span></div><span class="used-mobile">Применен 167 раз</span><a class="code-btn">Открыть промокод <span class="peek-real">E20</span></a></div>
+<div class="coupon-detail"><p>Скидка 300 рублей на первый онлайн-заказ от 1500 рублей.</p><div class="detail-act-title">Активность</div><ul class="detail-act"><li>Гость воспользовался этим промокодом 3 часа назад</li></ul></div></div></div>`;
+test('Promokod.com public wrappers retain real terms without inheriting checkout or usage claims',()=>{
+ const [code]=parseMerchantPage(promokodPage(),'https://promokod.com/coupon-store/vkusvill-ru',company,now);
+ assert.equal(code.code,'FULLCODE20');assert.equal(code.description,'Сэкономьте 300 рублей при заказе от 1500 рублей!');
+ assert.equal(code.discount,'300 ₽');
+ assert.equal(code.minOrder,1500);assert.equal(code.expiresAt,Date.parse('2026-11-30T23:59:59.999+03:00'));
+ assert.doesNotMatch([code.description,...code.conditions].join(' '),/Проверено|Применен|воспользовался|Открыть промокод/);
+ assert.match(code.conditions.join(' '),/первый онлайн-заказ/);assert.equal(code.status,'found');assert.equal(code.evidence,undefined);
+});
+test('Promokod.com masks and explicit foreign owners cannot enter the merchant result',()=>{
+ for(const html of [promokodPage('ABC***'),promokodPage('FOREIGN20','Ozon')])assert.deepEqual(parseMerchantPage(html,'https://promokod.com/coupon-store/vkusvill-ru',company,now),[]);
 });

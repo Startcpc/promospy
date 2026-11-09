@@ -32,7 +32,7 @@ export function FavoritesTransfer() {
         try {
           if(file.size>MAX_FAVORITES_FILE_BYTES)throw new Error('Файл слишком большой. Максимум — 4 МБ.');
           const result=importFavorites(await file.text());
-          setMessage(result.added?`Добавлено кодов: ${result.added}. Существующие сохранены.`:'Все коды уже есть в избранном.');
+          setMessage((result.added?`Добавлено кодов: ${result.added}. Существующие сохранены.`:'Все коды уже есть в избранном.')+(result.skipped?` Пропущено записей других магазинов: ${result.skipped}. Исходный файл не изменён.`:''));
           if(result.warning)setError(result.warning);
         } catch(error){setError(error instanceof Error?error.message:'Не удалось загрузить файл. Избранное не изменено.');}
         finally{setReading(false);}

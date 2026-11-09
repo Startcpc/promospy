@@ -12,7 +12,7 @@ test("saved data preserves Cyrillic case and identity, discards cached statuses 
   for (const raw of [null, "not json", "{}", '"text"', "x".repeat(100001)]) assert.deepEqual(parseSavedPromos(raw), []);
 });
 test("saved lists and lookup queries are bounded and reject incomplete or invalid IDs", () => {
-  const list = Array.from({ length: MAX_SAVED_PROMOS + 1 }, (_, i) => ({ id: `id${i}`, companyId: 54, code: `SAVE${i}`, savedAt: i }));
+  const list = Array.from({ length: MAX_SAVED_PROMOS + 1 }, (_, i) => ({ id: `54:SAVE${i}`, companyId: 54, code: `SAVE${i}`, savedAt: i }));
   assert.equal(parseSavedPromos(JSON.stringify(list)).length, MAX_SAVED_PROMOS);
   assert.deepEqual(parseSavedIds("id1,54:1раз,id1"), ["id1", "54:1раз"]);
   for (const raw of [null, "", "id1,", ",id1", "a b", "<script>", "a".repeat(129), list.map(item => item.id).join(",")]) assert.equal(parseSavedIds(raw), null);
@@ -56,7 +56,7 @@ test('favorites export/import keeps Unicode codes and conditions without positiv
 });
 test('favorites import appends new codes, preserves existing copies and can enrich a missing snapshot',()=>{
  const current=[{id:'54:KEEP',companyId:54,code:'KEEP',savedAt:100},{id:'54:OTHER',companyId:54,code:'OTHER',savedAt:200}];
- const incoming=[{...current[0],savedAt:900},{id:'201:NEW',companyId:201,code:'NEW',savedAt:300}];
+ const incoming=[{...current[0],savedAt:900},{id:'54:NEW',companyId:54,code:'NEW',savedAt:300}];
  const result=importSavedPromos(exportSavedPromos(incoming),current);
  assert.equal(result.added,1);assert.equal(result.items.length,3);assert.equal(result.items[0].savedAt,100);
  assert.equal(importSavedPromos(exportSavedPromos(result.items),result.items).added,0);
@@ -69,6 +69,24 @@ test('corrupt, foreign, oversized and duplicate favorites files fail without alt
 });
 test('favorites import refuses an overflowing merge without silently dropping either list',()=>{
  const current=Array.from({length:100},(_,i)=>({id:`54:OLD${i}`,companyId:54,code:`OLD${i}`,savedAt:100}));
- const raw=exportSavedPromos([{id:'201:EXTRA',companyId:201,code:'EXTRA',savedAt:200}]);
+ const raw=exportSavedPromos([{id:'54:EXTRA',companyId:54,code:'EXTRA',savedAt:200}]);
  assert.throws(()=>importSavedPromos(raw,current),/больше 100/);assert.equal(current.length,100);
+});
+
+test('legacy mixed favorites import only VkusVill and report skipped records',()=>{
+ const supported={id:'54:KEEP',companyId:54,code:'KEEP',savedAt:100};
+ const foreign={id:'201:OLD',companyId:201,code:'OLD',savedAt:100};
+ const raw=JSON.stringify({format:'promospy-favorites',version:1,items:[supported,foreign]});
+ assert.deepEqual(parseSavedPromos(JSON.stringify([supported,foreign])),[supported]);
+ const result=importSavedPromos(raw,[]);assert.deepEqual(result.items,[supported]);assert.equal(result.added,1);assert.equal(result.skipped,1);
+});
+test('favorites reject mismatched identities and placeholder coupon values',()=>{
+ for(const item of [{id:'201:CODE',companyId:54,code:'CODE',savedAt:100},{id:'54:OTHER',companyId:54,code:'CODE',savedAt:100},{id:'54:undefined',companyId:54,code:'undefined',savedAt:100}])assert.deepEqual(parseSavedPromos(JSON.stringify([item])),[]);
+});
+
+test('opaque legacy favorite IDs migrate without losing the supported code or its saved copy',()=>{
+ const old={id:'legacyDatabaseId',companyId:54,code:'MiXeD20',savedAt:100,snapshot:{id:'legacyDatabaseId',companyId:54,code:'MiXeD20',description:'Первый заказ',conditions:['От 1000 рублей'],sources:[],status:'official'}};
+ const [saved]=parseSavedPromos(JSON.stringify([old]));
+ assert.equal(saved.id,'54:MiXeD20');assert.equal(saved.code,'MiXeD20');assert.equal(saved.savedAt,100);
+ assert.equal(saved.snapshot?.id,saved.id);assert.equal(saved.snapshot?.status,'found');assert.deepEqual(saved.snapshot?.conditions,['От 1000 рублей']);
 });

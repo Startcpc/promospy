@@ -5,11 +5,14 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { companies } from '../src/lib/companies.ts';
 import { parseSearchCache, MAX_CACHE_BYTES } from '../src/lib/search-cache.ts';
+import { validReport } from '../src/lib/promo-validation.ts';
 
 const root = fileURLToPath(new URL('../',import.meta.url));
 const prefix = 'promospy-search-';
 const filename = () => `${prefix}${new Date().toISOString().replaceAll(':','-')}-${randomUUID()}.json`;
 const missing = error => error?.code === 'ENOENT';
+// Offline migration only. These IDs never become active search merchants.
+const legacyIds = new Set([5,54,102,201,202,203,204,205,206,207,208,301,302]);
 
 async function readBounded(filename, limit) {
   const info = await lstat(filename);
@@ -34,22 +37,39 @@ export async function backupSearchCache(directory, backups, keep = 7) {
     await rename(temporary,destination);
   } finally {await rm(temporary,{force:true});}
   const copies = await Promise.all((await readdir(backups)).filter(name=>/^promospy-search-\d{4}-\d{2}-\d{2}T[\d.-]+Z-[a-f\d-]{36}\.json$/.test(name)).map(async name=>({name,info:await lstat(path.join(backups,name))})));
-  const expired = copies.filter(item=>item.info.isFile()).sort((a,b)=>b.info.mtimeMs-a.info.mtimeMs||b.name.localeCompare(a.name)).filter(item=>path.join(backups,item.name)!==destination).slice(keep-1);
+  // A VkusVill-only snapshot cannot replace the historical data in a mixed
+  // backup. Rotate validated active backups only; keep legacy/corrupt copies.
+  const activeCopies = [];
+  for(const copy of copies){
+    if(!copy.info.isFile()||path.join(backups,copy.name)===destination)continue;
+    try{
+      const data=JSON.parse(await readBounded(path.join(backups,copy.name),MAX_CACHE_BYTES+10000));
+      if(data?.format==='promospy-search-cache'&&data.version===1&&Array.isArray(data.entries)&&data.entries.length===1&&data.entries[0]?.companyId===54){
+        const parsed=parseSearchCache(JSON.stringify(data.entries[0]),54);
+        if(parsed&&parsed.report.codes.length===data.entries[0].report.codes.length)activeCopies.push(copy);
+      }
+    }catch{ /* An unreadable or legacy backup is never discarded by rotation. */ }
+  }
+  const expired = activeCopies.sort((a,b)=>b.info.mtimeMs-a.info.mtimeMs||b.name.localeCompare(a.name)).slice(keep-1);
   for (const item of expired) await rm(path.join(backups,item.name));
   return {filename:destination,count:entries.length};
 }
 
 export async function restoreSearchCache(backup, directory, move = rename) {
-  const raw = await readBounded(backup,MAX_CACHE_BYTES*companies.length+10000);
+  const raw = await readBounded(backup,MAX_CACHE_BYTES*legacyIds.size+10000);
   let data;
   try {data=JSON.parse(raw);} catch {throw new Error('Резервная копия содержит некорректный JSON.');}
-  if (data?.format!=='promospy-search-cache'||data.version!==1||!Array.isArray(data.entries)||!data.entries.length||data.entries.length>companies.length) throw new Error('Неизвестный формат резервной копии.');
+  if (data?.format!=='promospy-search-cache'||data.version!==1||!Array.isArray(data.entries)||!data.entries.length||data.entries.length>legacyIds.size) throw new Error('Неизвестный формат резервной копии.');
   const unique = new Set(), entries = [];
   for (const entry of data.entries) {
+    if(!legacyIds.has(entry?.companyId)||unique.has(entry.companyId)||!validReport(entry.report))throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
+    unique.add(entry.companyId);
+    if(!companies.some(company=>company.id===entry.companyId))continue;
     const parsed = parseSearchCache(JSON.stringify(entry),entry?.companyId);
-    if (!parsed || unique.has(parsed.companyId) || parsed.report.codes.length!==entry.report.codes.length) throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
-    unique.add(parsed.companyId);entries.push(parsed);
+    if (!parsed || parsed.report.codes.length!==entry.report.codes.length) throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
+    entries.push(parsed);
   }
+  if(!entries.length)throw new Error('В копии нет результатов ВкусВилл. Текущие данные не изменены.');
   const target = path.resolve(directory), parent = path.dirname(target);
   await mkdir(parent,{recursive:true});
   let existing;
@@ -57,7 +77,7 @@ export async function restoreSearchCache(backup, directory, move = rename) {
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new Error('Каталог восстановления должен быть обычной папкой.');
   if (existing) {
     const names=await readdir(target,{withFileTypes:true});
-    if (names.some(item=>item.isDirectory()||item.isSymbolicLink()) || names.length && !names.some(item=>companies.some(company=>item.name===`${company.id}.json`))) throw new Error('Выбранная папка не похожа на кеш PromoSpy. Восстановление отменено.');
+    if (names.some(item=>item.isDirectory()||item.isSymbolicLink()) || names.length && !names.some(item=>[...legacyIds].some(id=>item.name===`${id}.json`))) throw new Error('Выбранная папка не похожа на кеш PromoSpy. Восстановление отменено.');
   }
   const stage = await mkdtemp(path.join(parent,`.${path.basename(target)}-restore-`));
   const previous = `${target}.before-restore-${randomUUID()}`;

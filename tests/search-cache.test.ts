@@ -68,3 +68,49 @@ test('cache CLI works from another working directory and restores without changi
  assert.match(execFileSync(process.execPath,['--import',loader,script,'restore',file],options),/Восстановлено магазинов: 1/);
  assert.deepEqual(await readSearchCache(54,data),entry);
 }));
+
+test('duplicate persisted offers cannot produce duplicate React keys',()=>{
+ const parsed=parseSearchCache(JSON.stringify({...entry,report:{...entry.report,codes:[offer,offer]}}),54)!;
+ assert.equal(parsed.report.codes.length,1);assert.equal(parsed.report.codes[0].code,'1раз');assert.equal(parsed.report.phase,undefined);
+});
+test('historical merchants and foreign offers are excluded without deleting their disk data',()=>temporary(async root=>{
+ const legacy={...entry,companyId:201,report:{...entry.report,codes:[{...offer,id:'201:OLD',companyId:201,code:'OLD'}]}};
+ const raw=JSON.stringify(legacy);await writeFile(path.join(root,'201.json'),raw);
+ assert.equal(await readSearchCache(201,root),null);assert.equal(await readFile(path.join(root,'201.json'),'utf8'),raw);
+ const foreign={...offer,id:'201:FOREIGN',code:'FOREIGN',companyId:201};
+ const parsed=parseSearchCache(JSON.stringify({...entry,report:{...entry.report,codes:[offer,foreign]}}),54)!;
+ assert.deepEqual(parsed.report.codes.map(code=>code.companyId),[54]);
+}));
+test('legacy multi-merchant backup restores only VkusVill and preserves the full original and old directory',()=>temporary(async root=>{
+ const data=path.join(root,'data'),file=path.join(root,'legacy.json');await mkdir(data);
+ const legacy={...entry,companyId:201,report:{...entry.report,codes:[]}};
+ const raw=JSON.stringify({format:'promospy-search-cache',version:1,entries:[entry,legacy]});
+ await writeFile(file,raw);await writeFile(path.join(data,'201.json'),JSON.stringify(legacy));
+ const restored=await restoreSearchCache(file,data);
+ assert.equal(restored.count,1);assert.equal(await readFile(file,'utf8'),raw);
+ assert.deepEqual(await readdir(data),['54.json']);assert.equal(await readFile(path.join(restored.previous!,'201.json'),'utf8'),JSON.stringify(legacy));
+ assert.deepEqual(await readSearchCache(54,data),entry);
+}));
+
+test('active backup rotation preserves historical multi-merchant backups',()=>temporary(async root=>{
+ const data=path.join(root,'data'),copies=path.join(root,'copies');await mkdir(data);await mkdir(copies);
+ await writeFile(path.join(data,'54.json'),JSON.stringify(entry));
+ const old=path.join(copies,'promospy-search-2026-01-01T00-00-00.000Z-00000000-0000-0000-0000-000000000000.json');
+ const raw=JSON.stringify({format:'promospy-search-cache',version:1,entries:[entry,{...entry,companyId:201,report:{...entry.report,codes:[]}}]});
+ await writeFile(old,raw);
+ await backupSearchCache(data,copies,1);
+ assert.equal(await readFile(old,'utf8'),raw);
+}));
+
+test('engine migration quarantines old masked catalogue evidence while preserving unrelated offers and the disk snapshot',()=>temporary(async root=>{
+ const masked={...offer,id:'54:OLDPART',code:'OLDPART',status:'found',extraction:{method:'card',text:'Промокод OLDPART'},sources:[{url:'https://promokodi.ru/store/vkusvill/',name:'promokodi.ru',seenAt:100}]};
+ const old={...entry,report:{...entry.report,engineVersion:7,codes:[offer,masked]}};
+ const raw=JSON.stringify(old);await writeFile(path.join(root,'54.json'),raw);
+ const parsed=await readSearchCache(54,root);assert.deepEqual(parsed?.report.codes,[offer]);assert.equal(parsed?.report.phase,undefined);
+ assert.equal(await readFile(path.join(root,'54.json'),'utf8'),raw);
+ const independent={...masked,sources:[...masked.sources,...offer.sources]};
+ const retained=parseSearchCache(JSON.stringify({...old,report:{...old.report,codes:[independent]}}),54)!;
+ assert.deepEqual(retained.report.codes[0].sources,offer.sources);
+ const fresh=parseSearchCache(JSON.stringify({...old,report:{...old.report,engineVersion:8,codes:[masked]}}),54)!;
+ assert.equal(fresh.report.codes.length,1);
+}));

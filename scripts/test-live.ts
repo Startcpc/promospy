@@ -4,7 +4,7 @@ import { effectiveStatus, getCompanyById } from '../src/lib/promocodes';
 import { closeSourceDispatchers } from '../src/lib/fetch-policy';
 const ids = process.argv.slice(2).map(Number);
 let failed = false;
-try { for (const id of ids.length ? ids : [54,201]) {
+try { for (const id of ids.length ? ids : [54]) {
   const company = getCompanyById(id);
   if (!company) throw new Error(`Неизвестный магазин: ${id}`);
   try {

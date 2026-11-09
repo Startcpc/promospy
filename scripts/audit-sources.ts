@@ -10,7 +10,7 @@ import { isChallengePage, isLoginWall } from '../src/lib/source-extraction';
 import { closeSourceDispatchers, sourceHost } from '../src/lib/fetch-policy';
 
 const ids=process.argv.slice(2).map(Number);
-if(ids.some(id=>!getCompanyById(id)))throw new Error('Передайте числовые ID магазинов, например: pnpm audit:sources 5 54 201');
+if(ids.some(id=>!getCompanyById(id)))throw new Error('Передайте числовые ID магазинов, например: pnpm audit:sources 54');
 const directory=path.resolve('work','source-audit-'+new Date().toISOString().replace(/[:.]/g,'-'));
 mkdirSync(directory,{recursive:true});
 const problem=(error:unknown)=>error instanceof Error?{...error,name:error.name,message:error.message}:String(error);
