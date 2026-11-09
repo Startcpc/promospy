@@ -61,7 +61,7 @@ export function parseMerchantPage(html: string, url: string, company: Company, n
   });
   // The actual coupon card determines whether the campaign is archived. A JSON
   // copy may be stale, while a reused code can belong to a new visible campaign.
-  diagnostics.incomplete=cardDiagnostics.incomplete||(structuredDiagnostics.rejectedCodes??[]).some(code=>!cards.some(card=>card.code===code));
+  diagnostics.incomplete=cardDiagnostics.incomplete||structuredDiagnostics.incomplete&&(!structuredDiagnostics.rejectedCodes?.length||structuredDiagnostics.rejectedCodes.some(code=>!cards.some(card=>card.code===code)));
   diagnostics.reasons=[...cardDiagnostics.reasons,...structuredDiagnostics.reasons].slice(0,5);
   const result = mergePromoCodes([...cards,...structured.filter(code=>!cards.some(card=>card.code===code.code)&&!cardDiagnostics.rejectedCodes?.includes(code.code))]);
   return result.map(code => {

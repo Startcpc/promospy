@@ -114,3 +114,61 @@ test('an archived catalogue campaign cannot expire a freshly published official 
   assert.equal(offers.find(code=>code.status==='expired')?.expiresAt,archived.expiresAt);
  }
 });
+
+test('string merchant owners are respected and inherited by nested structured offers',()=>{
+ for(const owner of ['merchant','seller','shop']){
+  const content=(name:string)=>page('<script type="application/json">'+JSON.stringify({[owner]:name,offers:[{promoCode:'OWNER20',title:'Скидка 20%'}]})+'</script>');
+  assert.deepEqual(parseMerchantPage(content('Ozon'),url,company),[],owner);
+  assert.equal(parseMerchantPage(content('ВкусВилл'),url,company)[0]?.code,'OWNER20',owner);
+ }
+});
+test('a late deadline and restrictions survive long HTML and JSON conditions',()=>{
+ const terms='Условия заказа. '.repeat(130)+' Действует до 01.01.2020. Заказ от 5000 рублей. Только в приложении.';
+ const bodies=['<article><h3>Скидка 20%</h3><p>Промокод: LATE20</p><p>'+terms+'</p></article>','<script type="application/json">'+JSON.stringify([{promoCode:'LATE20',title:'Скидка 20%',conditions:[terms]}])+'</script>'];
+ for(const body of bodies){const [code]=parseMerchantPage(page(body),url,company);assert.equal(code?.status,'expired');assert.equal(code.expiresAt,Date.parse('2020-01-01T23:59:59.999+03:00'));assert.equal(code.minOrder,5000);assert.equal(code.appOnly,true);assert.match(code.conditions.join(' '),/01.01.2020/);assert.ok(code.conditions.every(text=>text.length<=1500));}
+});
+test('unsafe numeric JSON coupon values cannot be rounded into invented strings',()=>{
+ assert.deepEqual(parseMerchantPage('[{"merchantName":"ВкусВилл","promoCode":1234567890123456789,"title":"Скидка 20%"}]',url,company),[]);
+ assert.equal(parseMerchantPage('[{"merchantName":"ВкусВилл","promoCode":12345,"title":"Скидка 20%"}]',url,company)[0]?.code,'12345');
+});
+test('oversized named-code cards cannot fall back to undated structured attributes',()=>{
+ const diagnostics={incomplete:false,reasons:[] as string[]};
+ const html=page('<article data-promocode="TOOLONG20"><h3>Скидка 20%</h3><p>'+('Условия заказа. '.repeat(410))+' Действует до 01.01.2020</p></article>');
+ assert.deepEqual(parseMerchantPage(html,url,company,Date.now(),false,diagnostics),[]);assert.equal(diagnostics.incomplete,true);
+});
+
+test('a parent code wrapper cannot bypass a masked child without explicit full-copy evidence',()=>{
+ const masked=page('<article><h3>Скидка 20%</h3><p>Промокод</p><div class="btn-code"><span class="code-part">ABC</span></div></article>');
+ assert.deepEqual(parseMerchantPage(masked,url,company),[]);
+ assert.equal(parseMerchantPage(masked.replace('class="btn-code"','class="btn-code" data-clipboard-text="FULLCODE20"'),url,company)[0]?.code,'FULLCODE20');
+});
+test('observed Promokodi archive containers never advertise ended offers as current',()=>{
+ const html=page('<div class="shop-expired-coupon-list" id="expired-coupon-list"><div class="offer"><h3>Скидка 20%</h3><p>Промокод</p><button data-clipboard-text="ARCHIVED20">Копировать</button><div class="offer__meta__icon" title="Период действия купона завершён."><span class="count">01.09.2026</span></div></div></div>');
+ const [code]=parseMerchantPage(html,url,company);assert.equal(code?.status,'expired');assert.equal(code.expiresAt,Date.parse('2026-09-01T23:59:59.999+03:00'));
+});
+
+test('conflicting structured merchant claims are rejected while equivalent VkusVill aliases remain valid',()=>{
+ const content=(shop:string)=>page('<script type="application/json">'+JSON.stringify({merchantName:'ВкусВилл',shop,offers:[{promoCode:'OWNER20',title:'Скидка 20%'}]})+'</script>');
+ assert.deepEqual(parseMerchantPage(content('Ozon'),url,company),[]);
+ assert.equal(parseMerchantPage(content('vkusvill'),url,company)[0]?.code,'OWNER20');
+});
+test('oversized structured terms are rejected as incomplete instead of losing late restrictions',()=>{
+ for(const conditions of [Array.from({length:21},(_,i)=>i===20?'Действует до 01.01.2020':'Условие заказа'),['Условие '.repeat(5000)],['Ж'.repeat(1501)+' Действует до 01.01.2020']]){
+  const diagnostics={incomplete:false,reasons:[] as string[]};
+  const html=page('<script type="application/json">'+JSON.stringify([{promoCode:'LIMITED20',title:'Скидка 20%',conditions}])+'</script>');
+  assert.deepEqual(parseMerchantPage(html,url,company,Date.now(),false,diagnostics),[]);assert.equal(diagnostics.incomplete,true);
+ }
+});
+
+test('explicit merchant ownership on HTML cards also constrains copy and named-code attributes',()=>{
+ for(const attribute of ['data-clipboard-text','data-promocode'])for(const owner of ['data-merchant-name','data-store-name','data-shop-name']){
+  const html=page(`<article ${owner}="Ozon"><h3>Скидка 20%</h3><p>Промокод</p><button ${attribute}="FOREIGN20">Копировать</button></article>`);
+  assert.deepEqual(parseMerchantPage(html,url,company),[]);
+  assert.equal(parseMerchantPage(html.replace('Ozon','ВкусВилл'),url,company)[0]?.code,'FOREIGN20');
+ }
+});
+test('ambiguous named-code containers cannot be rescued as generic undated offers',()=>{
+ const diagnostics={incomplete:false,reasons:[] as string[]};
+ const html=page('<article data-promocode="AMBIG20"><h3>Скидка 20%</h3><h3>Другие условия</h3><p>Заказ от 1000 рублей</p></article>');
+ assert.deepEqual(parseMerchantPage(html,url,company,Date.now(),false,diagnostics),[]);assert.equal(diagnostics.incomplete,true);
+});

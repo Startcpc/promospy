@@ -14,7 +14,14 @@ export function parseSearchCache(raw: string, id: number, now = Date.now()): Cac
   try {
     const item = JSON.parse(raw) as CachedSearch;
     if (!item || item.companyId !== id || !validReport(item.report) || !Number.isFinite(item.at) || item.at < 0 || item.at > now + 60000) return null;
-    const valid = item.report.codes.filter(code => validPromo(code,id));
+    const valid = item.report.codes.filter(code => validPromo(code,id)).flatMap(code=>{
+      if((item.report.engineVersion??0)>=8||code.extraction?.method!=='card')return [code];
+      // Earlier parsers could read a masked child's text through its parent on
+      // this catalogue. Quarantine that evidence without deleting the old file
+      // or discarding independently retrieved sources of the same offer.
+      const sources=code.sources.filter(source=>new URL(source.url).hostname.replace(/^www\./,'')!=='promokodi.ru');
+      return sources.length===code.sources.length?[code]:sources.length?[{...code,sources,cached:true}]:[];
+    });
     const duplicateIds = new Set(valid.map(code=>code.id)).size < valid.length;
     const codes = duplicateIds ? mergeOffers(valid) : valid;
     if (item.report.codes.length && !codes.length) return null;

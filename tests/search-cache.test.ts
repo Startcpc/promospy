@@ -101,3 +101,16 @@ test('active backup rotation preserves historical multi-merchant backups',()=>te
  await backupSearchCache(data,copies,1);
  assert.equal(await readFile(old,'utf8'),raw);
 }));
+
+test('engine migration quarantines old masked catalogue evidence while preserving unrelated offers and the disk snapshot',()=>temporary(async root=>{
+ const masked={...offer,id:'54:OLDPART',code:'OLDPART',status:'found',extraction:{method:'card',text:'Промокод OLDPART'},sources:[{url:'https://promokodi.ru/store/vkusvill/',name:'promokodi.ru',seenAt:100}]};
+ const old={...entry,report:{...entry.report,engineVersion:7,codes:[offer,masked]}};
+ const raw=JSON.stringify(old);await writeFile(path.join(root,'54.json'),raw);
+ const parsed=await readSearchCache(54,root);assert.deepEqual(parsed?.report.codes,[offer]);assert.equal(parsed?.report.phase,undefined);
+ assert.equal(await readFile(path.join(root,'54.json'),'utf8'),raw);
+ const independent={...masked,sources:[...masked.sources,...offer.sources]};
+ const retained=parseSearchCache(JSON.stringify({...old,report:{...old.report,codes:[independent]}}),54)!;
+ assert.deepEqual(retained.report.codes[0].sources,offer.sources);
+ const fresh=parseSearchCache(JSON.stringify({...old,report:{...old.report,engineVersion:8,codes:[masked]}}),54)!;
+ assert.equal(fresh.report.codes.length,1);
+}));

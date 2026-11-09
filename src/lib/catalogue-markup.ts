@@ -8,6 +8,15 @@ const { load } = createRequire(import.meta.url)('cheerio') as typeof import('che
  * No popup, referral URL or script is fetched to reveal a code.
  */
 export function catalogueMarkup(html:string,url:string):string {
+  if(sourceHost(url)==='promokodi.ru'){
+    const $=load(html);
+    $('.shop-expired-coupon-list .offer,#expired-coupon-list .offer').each((_,element)=>{
+      const card=$(element);card.attr('data-expired','true');
+      const deadline=card.find('.offer__meta__icon[title]').filter((_,node)=>/^Период действия купона заверш[её]н\.?$/i.test($(node).attr('title')??'')).find('.count');
+      if(deadline.length===1&&deadline.text().trim())card.attr('data-expires-at',deadline.text().trim());
+    });
+    return $.html();
+  }
   if(sourceHost(url)==='promokod.com'){
     const $=load(html);
     // Observed public copy values live on the outer wrapper; the inner .coupon

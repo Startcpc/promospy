@@ -27,8 +27,36 @@ export function parseMoney(text: string): number | undefined {
   const value = Number(match[0].replace(/[\s\u00a0\u202f]/g, "").replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
 }
-function cleanText(value: string) {
-  return load(`<div>${value}</div>`)("div").text().replace(/\s+/g, " ").trim().slice(0, 1500);
+function cleanText(value: string, limit = 1500) {
+  return load(`<div>${value}</div>`)("div").text().replace(/\s+/g, " ").trim().slice(0, limit);
+}
+function recordMerchant(record: RecordValue): string | undefined {
+  const names = ['merchantName','shopName','storeName','companyName'].flatMap(key => {
+    const value=field(record,[key]);return value?[value]:[];
+  });
+  for(const key of ['shop','seller','merchant']){
+    const owner=record[key];
+    const name=typeof owner==='string'?owner.trim():owner&&typeof owner==='object'?field(owner as RecordValue,['title','name']):undefined;
+    if(name)names.push(name);
+  }
+  const aliases=(merchantAliases[54]??[]).map(normalizeMerchantName);
+  const identities=new Set(names.map(name=>{const key=normalizeMerchantName(name);return aliases.includes(key)?'54':key;}));
+  return identities.size>1?'Несогласованный магазин':names[0];
+}
+/** Preserve every word within the existing storage bounds, including late dates. */
+function conditionBlocks(texts: string[]): string[] | undefined {
+  const result: string[]=[];
+  for(let text of texts){
+    while(text.length>1500){
+      const boundary=text.lastIndexOf(' ',1500);
+      if(boundary<=0)return;
+      result.push(text.slice(0,boundary));text=text.slice(boundary+1);
+      if(result.length>=20)return;
+    }
+    if(text)result.push(text);
+    if(result.length>20)return;
+  }
+  return result;
 }
 function maximumDiscount(record:RecordValue,terms:string){
   const explicit=field(record,['maxDiscount','maximumDiscount']);
@@ -42,34 +70,49 @@ function maximumDiscount(record:RecordValue,terms:string){
 function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string, now: number, requireMerchant = false, diagnostics?:ParseDiagnostics): PromoCode | undefined {
   if(privateRecord(record))return;
   const company = getCompanyById(companyId);
-  const shop=record.shop??record.seller??record.merchant;
-  const nestedShop = shop && typeof shop === "object" ? shop as RecordValue : undefined;
-  const merchant = field(record, ["merchantName", "shopName", "storeName", "companyName"]) ?? (nestedShop ? field(nestedShop, ["title", "name"]) : undefined);
+  const merchant = recordMerchant(record);
   if (requireMerchant && !merchant) return;
   if (merchant && company) {
     const normalized = normalizeMerchantName(merchant);
     const aliases = [company.name, ...merchantAliases[companyId]??[]].map(normalizeMerchantName);
     if (!aliases.includes(normalized)) return;
   }
-  const rawCode = field(record, CODE_FIELDS) ?? (record["@type"] === "Offer" && typeof record.description === "string" ? explicitCode(record.description) : undefined);
+  const codeField=CODE_FIELDS.find(key=>typeof record[key]==='string'&&String(record[key]).trim()||typeof record[key]==='number'&&Number.isFinite(record[key]));
+  const value=codeField?record[codeField]:undefined;
+  if(typeof value==='number'&&(!Number.isSafeInteger(value)||value<0)){
+    if(diagnostics){diagnostics.incomplete=true;if(diagnostics.reasons.length<5)diagnostics.reasons.push('Числовое значение промокода нельзя прочитать без потери точности');}
+    return;
+  }
+  const rawCode = codeField ? field(record,[codeField]) : record["@type"] === "Offer" && typeof record.description === "string" ? explicitCode(record.description) : undefined;
   if (!rawCode) return;
   const code = codeKey(rawCode);
   if (!validCouponToken(code)) return;
-  const description = cleanText(field(record, ["title", "description", "name"]) ?? `Промокод ${code}`);
-  if (company && foreignMerchantHeading(description,companyId)) return;
+  const reject=(reason:string)=>{
+    if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(code);if(diagnostics.reasons.length<5)diagnostics.reasons.push(reason);}
+    return undefined;
+  };
+  const rawTitle=field(record, ["title", "description", "name"]) ?? `Промокод ${code}`;
   const rawConditions = record.conditions ?? record.terms;
-  const conditions = (Array.isArray(rawConditions) ? rawConditions : typeof rawConditions === "string" ? [rawConditions] : [])
-    .filter((v): v is string => typeof v === "string").slice(0,20).map(cleanText).filter(Boolean);
+  if(Array.isArray(rawConditions)&&rawConditions.length>20)return reject('Количество условий промокода превышает безопасный лимит');
+  const inputs = (Array.isArray(rawConditions) ? rawConditions : typeof rawConditions === "string" ? [rawConditions] : [])
+    .filter((v): v is string => typeof v === "string");
   const details = field(record, ["description"]);
-  if (details && cleanText(details) !== description) conditions.push(cleanText(details));
-  if (record.forFirstPurchase === true && record.forRepeatPurchase === false) conditions.push("Только первый заказ");
-  if (record.forRepeatPurchase === true && record.forFirstPurchase === false) conditions.push("Только повторный заказ");
+  if(rawTitle.length+inputs.reduce((size,text)=>size+text.length,0)+(details?.length??0)>120000)return reject('Объём условий промокода превышает безопасный лимит');
+  const fullTitle=cleanText(rawTitle,30001),description=fullTitle.slice(0,1500);
+  if (company && foreignMerchantHeading(fullTitle,companyId)) return;
+  const terms=inputs.map(text=>cleanText(text,30001)).filter(Boolean);
+  if(details){const text=cleanText(details,30001);if(text&&text!==fullTitle)terms.push(text);}
+  if (record.forFirstPurchase === true && record.forRepeatPurchase === false) terms.push("Только первый заказ");
+  if (record.forRepeatPurchase === true && record.forFirstPurchase === false) terms.push("Только повторный заказ");
+  if(fullTitle.length+terms.reduce((size,text)=>size+text.length,0)>30000)return reject('Объём условий промокода превышает безопасный лимит');
+  const conditions=conditionBlocks([...(fullTitle.length>1500?[fullTitle]:[]),...terms]);
+  if(!conditions)return reject('Условия промокода нельзя сохранить полностью');
   const percent = field(record, ["discountPercent", "discount_percent"]);
   const amount = field(record, ["discountAmount", "discount_amount"]);
   const discount = percent && Number(percent.replace(",", ".")) > 0 ? `−${percent}%`
     : amount && Number(amount) > 0 ? `${amount} ₽`
       : description.match(/\d+\s*%/)?.[0] ?? "По условиям акции";
-  const conditionText = [description, ...conditions].join(" ");
+  const conditionText = [fullTitle, ...terms].join(" ");
   const minimum = field(record, ["minOrder", "minimumOrder", "min_order"])
     ?? conditionText.match(/(?:заказ[а-яё]*|покупк[а-яё]*|сумм[а-яё]*)(?:\s+на\s+сумму)?\s*(?:от|не\s+менее)\s*([\d\s\u00a0\u202f]+(?:[.,]\d{1,2})?)/i)?.[1];
   const rawEnd = field(record, ["expiresAt", "dateEnd", "endDate", "validThrough", "expirationDate"]);
@@ -110,8 +153,7 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
     if (Array.isArray(value)) { value.forEach((item) => visit(item, depth + 1, inheritedMerchant)); return; }
     const record = value as RecordValue;
     if(privateRecord(record))return;
-    const owner=record.shop??record.seller??record.merchant;
-    const merchant=field(record,["merchantName","shopName","storeName","companyName"])??(owner&&typeof owner==="object"?field(owner as RecordValue,["title","name"]):undefined)??inheritedMerchant;
+    const merchant=recordMerchant(record)??inheritedMerchant;
     const identifier=record.identifier && typeof record.identifier==="object" ? record.identifier as RecordValue : undefined;
     const namedIdentifier=identifier && /^(?:promoCode|couponCode|promo_code|discountCode)$/i.test(String(identifier.propertyID??identifier.name??"")) && typeof identifier.value==="string" ? identifier.value : undefined;
     const candidate={...record,...(merchant?{merchantName:merchant}:{}),...(namedIdentifier?{promoCode:namedIdentifier}:{})};
@@ -152,7 +194,9 @@ export function parsePromoCodesFromHtml(html: string, sourceUrl: string, company
     if(el.parents("template,[hidden],[aria-hidden=\"true\"],[style*=\"display:none\"],[style*=\"display: none\"]").length)return;
     const card = el.closest("[data-coupon], [data-offer], .coupon, .promocode, .offer");
     const title = card.find("[data-title], h2, h3, .coupon-title").first();
+    const owner=el.closest('[data-merchant-name],[data-store-name],[data-shop-name]');
     records.push({
+      merchantName:owner.attr('data-merchant-name'),storeName:owner.attr('data-store-name'),shopName:owner.attr('data-shop-name'),
       promoCode: el.attr("data-promocode") ?? el.attr("data-promo-code") ?? el.attr("data-coupon-code"),
       title: title.attr('data-title') ?? (title.text() || el.attr("data-title")),
       conditions: card.find("[data-conditions], .conditions").first().text(),
