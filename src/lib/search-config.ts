@@ -1,4 +1,5 @@
 export const ENGINE_VERSION=8;
+export const SEARCH_REFRESH_INTERVAL_MS=5*60_000;
 export function integerSetting(name: string, fallback: number, min: number, max: number, env = process.env) {
   const raw = env[name];
   if (!raw || !/^\d+$/.test(raw)) return fallback;

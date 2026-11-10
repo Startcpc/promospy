@@ -20,7 +20,7 @@ test('search is deduplicated, cached and subject to a shared cooldown',async()=>
  assert.equal((await settle(54)).status,'idle');assert.equal((await requestSearch(54,execute)).status,'idle');assert.equal(calls,1);
 });
 test('failed refresh retains the last successfully read data',async()=>{
- const data={companyId:54,at:Date.now()-16*60000,report};writeFileSync(path.join(dir,'54.json'),JSON.stringify(data));
+ const data={companyId:54,at:Date.now()-6*60000,report};writeFileSync(path.join(dir,'54.json'),JSON.stringify(data));
  await requestSearch(54,async()=>{throw Error('network unavailable');});const state=await settle(54);assert.equal(state.status,'failed');assert.equal(state.lastScan,data.at);assert.equal(state.error,null);assert.match(state.notice!,/Источники/);
 });
 test('missing saved offers are explicit and do not require a database',async()=>{
@@ -108,7 +108,7 @@ test('cycle 1: another failed source retains its last offer after the first sour
  await requestSearch(id,async()=>({...report,visited:[sourceA],parsedUrls:[sourceA],sourceResults:[{url:sourceA,official:true,outcome:'empty',count:0},{url:sourceB,official:false,outcome:'error',count:0}]}),true);
  const state=await settle(id);assert.equal(state.codes[0]?.code,'MULTI');assert.equal(state.codes[0].status,'found');assert.deepEqual(state.codes[0].sources.map(source=>source.url),[sourceB]);
 });
-test('cycle 1: partially corrupt cache does not block refresh for fifteen minutes',async()=>{
+test('cycle 1: partially corrupt cache does not block refresh for five minutes',async()=>{
  const id=54;const code={id:'54:GOOD',companyId:id,code:'GOOD',description:'Offer',discount:'10%',status:'found',conditions:[],found:1,sources:[{url:'https://vkusvill.ru/actions/',name:'vkusvill.ru',seenAt:1}]};
  writeFileSync(path.join(dir,`${id}.json`),JSON.stringify({companyId:id,at:Date.now(),report:{...report,codes:[code,null]}}));
  let calls=0;await requestSearch(id,async()=>{calls++;return report;});await settle(id);assert.equal(calls,1);
@@ -165,4 +165,39 @@ test('a partially parsed refresh preserves the newest observation time for each 
  const fresh={...code,found:now,sources:[{url:source,name:'getcashback.ru',seenAt:now}]};
  await requestSearch(54,async()=>({...report,codes:[fresh],visited:[source],parsedUrls:[],sourceResults:[{url:source,official:false,outcome:'codes',count:1,partial:true}]}),true);
  const state=await settle(54);assert.equal(state.codes[0].sources[0].seenAt,now);assert.equal(state.codes[0].found,at);assert.equal(state.codes[0].cached,false);
+});
+
+test('five-minute refresh continues without a page request and coalesces with concurrent requests',async t=>{
+ const {SEARCH_REFRESH_INTERVAL_MS}=await import('../src/lib/search-config');
+ assert.equal(SEARCH_REFRESH_INTERVAL_MS,300000);
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:Date.now()});
+ let calls=0,release:(()=>void)|undefined;
+ const execute=async()=>{
+  calls++;
+  if(calls===2)await new Promise<void>(resolve=>{release=resolve;});
+  return report;
+ };
+ const drainIO=async(check:()=>Promise<boolean>)=>{
+  const limit=performance.now()+3000;
+  while(performance.now()<limit){if(await check())return;await new Promise<void>(resolve=>setImmediate(resolve));}
+  throw Error('Background refresh did not settle');
+ };
+ try{
+  await requestSearch(54,execute,true);
+  await drainIO(async()=> (await searchState(54)).status==='idle');
+  const first=await searchState(54);
+  assert.equal(first.nextScan!-first.lastScan!,300000);
+  t.mock.timers.tick(299999);
+  await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(calls,1);
+  t.mock.timers.tick(1);
+  await drainIO(async()=>calls===2);
+  await Promise.all([requestSearch(54,execute),requestSearch(54,execute,true)]);
+  assert.equal(calls,2,'timer, page polling and refresh must share one running search');
+  release!();await drainIO(async()=> (await searchState(54)).status==='idle');
+  assert.equal((await searchState(54)).lastScan,first.lastScan!+300000);
+  t.mock.timers.tick(300000);
+  await drainIO(async()=>calls===3&&(await searchState(54)).status==='idle');
+ }finally{
+  release?.();t.mock.timers.reset();
+ }
 });

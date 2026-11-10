@@ -172,3 +172,16 @@ test('ambiguous named-code containers cannot be rescued as generic undated offer
  const html=page('<article data-promocode="AMBIG20"><h3>Скидка 20%</h3><h3>Другие условия</h3><p>Заказ от 1000 рублей</p></article>');
  assert.deepEqual(parseMerchantPage(html,url,company,Date.now(),false,diagnostics),[]);assert.equal(diagnostics.incomplete,true);
 });
+
+test('distribution contains only the VkusVill catalogue and no legacy database or maintenance commands',async()=>{
+ const {existsSync,readFileSync,readdirSync}=await import('node:fs');
+ const {companies}=await import('../src/lib/companies');
+ const root=new URL('../',import.meta.url);
+ assert.deepEqual(companies.map(company=>company.id),[54]);
+ assert.deepEqual(readdirSync(new URL('public/logos/',root)),['vkusvill-user.png']);
+ for(const file of ['db/custom.db','prisma/schema.prisma','prisma/bootstrap.sql','scripts/database-tools.mjs','scripts/backup-db.mjs','scripts/restore-db.mjs','tests/database-tools.test.mjs','Caddyfile'])assert.equal(existsSync(new URL(file,root)),false,file);
+ const metadata=JSON.parse(readFileSync(new URL('package.json',root),'utf8'));
+ for(const command of ['db:backup','db:restore','test:database'])assert.equal(metadata.scripts[command],undefined);
+ assert.ok(!metadata.scripts.check.includes('test:database'));
+ assert.deepEqual(readdirSync(new URL('docs/',root)).sort(),['release-0.13.0.md','server-setup.md']);
+});

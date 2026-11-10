@@ -11,8 +11,8 @@ const root = fileURLToPath(new URL('../',import.meta.url));
 const prefix = 'promospy-search-';
 const filename = () => `${prefix}${new Date().toISOString().replaceAll(':','-')}-${randomUUID()}.json`;
 const missing = error => error?.code === 'ENOENT';
-// Offline migration only. These IDs never become active search merchants.
-const legacyIds = new Set([5,54,102,201,202,203,204,205,206,207,208,301,302]);
+// Read bounded historical backups without maintaining a catalogue of old shops.
+const MAX_BACKUP_ENTRIES = 16;
 
 async function readBounded(filename, limit) {
   const info = await lstat(filename);
@@ -56,13 +56,13 @@ export async function backupSearchCache(directory, backups, keep = 7) {
 }
 
 export async function restoreSearchCache(backup, directory, move = rename) {
-  const raw = await readBounded(backup,MAX_CACHE_BYTES*legacyIds.size+10000);
+  const raw = await readBounded(backup,MAX_CACHE_BYTES*MAX_BACKUP_ENTRIES+10000);
   let data;
   try {data=JSON.parse(raw);} catch {throw new Error('Резервная копия содержит некорректный JSON.');}
-  if (data?.format!=='promospy-search-cache'||data.version!==1||!Array.isArray(data.entries)||!data.entries.length||data.entries.length>legacyIds.size) throw new Error('Неизвестный формат резервной копии.');
+  if (data?.format!=='promospy-search-cache'||data.version!==1||!Array.isArray(data.entries)||!data.entries.length||data.entries.length>MAX_BACKUP_ENTRIES) throw new Error('Неизвестный формат резервной копии.');
   const unique = new Set(), entries = [];
   for (const entry of data.entries) {
-    if(!legacyIds.has(entry?.companyId)||unique.has(entry.companyId)||!validReport(entry.report))throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
+    if(!Number.isSafeInteger(entry?.companyId)||entry.companyId<=0||unique.has(entry.companyId)||!validReport(entry.report))throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
     unique.add(entry.companyId);
     if(!companies.some(company=>company.id===entry.companyId))continue;
     const parsed = parseSearchCache(JSON.stringify(entry),entry?.companyId);
@@ -77,7 +77,7 @@ export async function restoreSearchCache(backup, directory, move = rename) {
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new Error('Каталог восстановления должен быть обычной папкой.');
   if (existing) {
     const names=await readdir(target,{withFileTypes:true});
-    if (names.some(item=>item.isDirectory()||item.isSymbolicLink()) || names.length && !names.some(item=>[...legacyIds].some(id=>item.name===`${id}.json`))) throw new Error('Выбранная папка не похожа на кеш PromoSpy. Восстановление отменено.');
+    if (names.some(item=>item.isDirectory()||item.isSymbolicLink()) || names.length && !names.some(item=>/^[1-9]\d{0,8}\.json$/.test(item.name))) throw new Error('Выбранная папка не похожа на кеш PromoSpy. Восстановление отменено.');
   }
   const stage = await mkdtemp(path.join(parent,`.${path.basename(target)}-restore-`));
   const previous = `${target}.before-restore-${randomUUID()}`;

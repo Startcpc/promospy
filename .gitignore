@@ -56,10 +56,7 @@ server.log
 /.pnpm-store/
 /.cache/
 /test-results/
-/db/*.db-*
-/db/*.backup-*
 
-/db/backups/
 /.runtime/
 __pycache__/
 /work/

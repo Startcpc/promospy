@@ -10,7 +10,7 @@ import { parseMerchantPage } from '../src/lib/web-search';
 import { getCompanyById } from '../src/lib/promocodes';
 const networkPreload=new URL('./helpers/official-network.mjs',import.meta.url).href;
 
-test('home makes no scans; native links and favorites work without Prisma, keys or carts',async()=>{
+test('home makes no scans; native links and favorites work without keys or carts',async()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-web-'));
  const code=parseMerchantPage('<title>ВкусВилл</title><article><h3>Первый заказ</h3><p>Промокод: SAVE10</p></article>','https://promokodi.ru/store/vkusvill',getCompanyById(54)!)[0];
  code.id='54:SAVE10';
@@ -203,7 +203,7 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
   let posts=0;const deadline=Date.now()+10000;
   await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST')posts++;
-   return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline-900000,nextScan:posts>1?deadline+900000:deadline,error:null,log:[]}});
+   return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline-300000,nextScan:posts>1?deadline+300000:deadline,error:null,log:[]}});
   });
   await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
   await page.clock.fastForward(31000);await page.waitForTimeout(100);
@@ -212,17 +212,17 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
   await page.unroute('**/api/scan/54*');
   await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST'){retryUrls.push(route.request().url());if(++attempts===1)return route.fulfill({status:503,json:{error:'Temporary API failure'}});}
-   return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline,nextScan:deadline+900000,error:null,log:[]}});
+   return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline,nextScan:deadline+300000,error:null,log:[]}});
   });
   await page.getByRole('button',{name:'Обновить',exact:true}).click();await page.getByText('Temporary API failure',{exact:false}).waitFor({state:'attached'});
   await page.clock.fastForward(3100);await page.waitForTimeout(100);
   assert.equal(attempts,2);assert.ok(retryUrls.every(url=>new URL(url).searchParams.get('refresh')==='1'));
-  // A wrong wall clock must not turn a fifteen-minute TTL into a POST loop.
+  // A wrong wall clock must not turn a five-minute TTL into a POST loop.
   await page.unroute('**/api/scan/54*');posts=0;
   const serverTime=Date.now();
   await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST')posts++;
-   return route.fulfill({json:{codes:[],status:'idle',lastScan:serverTime,nextScan:serverTime+900000,serverTime,error:null,log:[]}});
+   return route.fulfill({json:{codes:[],status:'idle',lastScan:serverTime,nextScan:serverTime+300000,serverTime,error:null,log:[]}});
   });
   await page.clock.setSystemTime(new Date('2030-01-01T00:00:00Z'));
   await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);

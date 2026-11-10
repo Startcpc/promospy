@@ -8,7 +8,7 @@ export type Company = {
   website: string;
 };
 
-/** The only supported merchant. Historical data stays on disk. */
+/** The only merchant supported by this application. */
 export const VKUSVILL_ID = 54;
 export const companies: Company[] = [
   {

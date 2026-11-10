@@ -39,7 +39,6 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:search
-      - run: pnpm test:database
       - run: pnpm test:launcher
       - if: matrix.node == 22
         run: pnpm exec playwright install --with-deps chromium
@@ -67,5 +66,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm test:search
-      - run: pnpm test:database
       - run: pnpm test:launcher

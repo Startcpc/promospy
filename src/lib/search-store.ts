@@ -8,20 +8,29 @@ import { sourceIdentity } from './promo-validation';
 import { readSearchCache as cached, searchDirectory as directory, MAX_CACHE_BYTES, parseSearchCache, type CachedSearch } from './search-cache';
 import { mergeOffers } from './offer-identity';
 import { offerConflict } from './promo-quality';
-import { searchConfig, ENGINE_VERSION } from './search-config';
+import { searchConfig, ENGINE_VERSION, SEARCH_REFRESH_INTERVAL_MS } from './search-config';
 import { publicHttp } from './public-http';
 import { browserReader } from './browser-reader';
 import { closeSourceDispatchers } from './fetch-policy';
 export type MerchantSearchState = ScanState & { report?: Omit<SearchReport,'codes'>; notice?: string; serverTime?: number };
 type Job = {id:number;execute:typeof searchMerchant;status:'queued'|'running';report?:SearchReport;controller:AbortController;previousUrls:string[]};
 type Failure={message:string;retry:number;report?:SearchReport;storageError?:boolean};
-type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>};
+type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>;refreshTimer?:ReturnType<typeof setTimeout>};
 const runtimeKey=Symbol.for('promospy.search.runtime');
 const globals=globalThis as typeof globalThis & {[runtimeKey]?:Runtime};
 const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),revisions:new Map<number,number>(),active:0,stopping:false,tasks:new Set<Promise<void>>()};
 runtime.revisions??=new Map<number,number>();
 globals[runtimeKey]=runtime;
 const {jobs,failures,revisions}=runtime;
+function scheduleRefresh(execute:typeof searchMerchant,delay=SEARCH_REFRESH_INTERVAL_MS){
+  clearTimeout(runtime.refreshTimer);
+  if(runtime.stopping)return;
+  runtime.refreshTimer=setTimeout(()=>{
+    runtime.refreshTimer=undefined;
+    void requestSearch(54,execute).catch(()=>scheduleRefresh(execute,60_000));
+  },Math.max(0,delay));
+  runtime.refreshTimer.unref?.();
+}
 const markerPath=(id:number)=>path.join(directory(),String(id)+'.pending');
 async function marker(id:number):Promise<{retry?:number}|null>{
   try{const raw=await readFile(markerPath(id),'utf8');if(raw.length>1000)return null;const data=JSON.parse(raw);return data&&typeof data==='object'?{retry:Number.isFinite(data.retry)&&data.retry>Date.now()&&data.retry<Date.now()+86400000?data.retry:undefined}:null;}catch{return null;}
@@ -49,7 +58,7 @@ export async function searchState(id: number): Promise<MerchantSearchState> {
       codes: job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
       status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:result?.at ?? null,
       serverTime:Date.now(),
-      nextScan:failure?.retry ?? (result ? result.at + 15*60000 : null),error:null,log:[],
+      nextScan:failure?.retry ?? (result ? result.at + SEARCH_REFRESH_INTERVAL_MS : null),error:null,log:[],
       ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
       ...(failure ? {notice:failure.storageError ? 'Не удалось сохранить кеш. Результаты доступны до перезапуска сервера.' : result?.report.codes.length ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : failure.report?.pagesRead ? 'Страницы загрузились, но извлечь промокоды не удалось. Можно повторить поиск.' : 'Источники не загрузились. Можно повторить поиск.'} : {}),
     };
@@ -121,6 +130,7 @@ function drain() {
         const failure=failures.get(job.id);
         if(!runtime.stopping){if(failure)await writeMarker(job.id,failure.retry);else await rm(markerPath(job.id),{force:true}).catch(()=>{});}
         revisions.set(job.id,(revisions.get(job.id)??0)+1);jobs.delete(job.id);runtime.active--;drain();
+        scheduleRefresh(job.execute,failure?failure.retry-Date.now():SEARCH_REFRESH_INTERVAL_MS);
       }
     })();
     runtime.tasks.add(task);void task.finally(()=>runtime.tasks.delete(task));
@@ -132,7 +142,10 @@ export async function requestSearch(id: number, execute = searchMerchant, force 
   const state = await searchState(id);
   const oldParserCache = state.status !== 'failed' && state.report && (!state.report.sourceResults || state.report.phase !== 'complete' || state.report.engineVersion!==ENGINE_VERSION);
   if(jobs.has(id))return searchState(id);
-  if (!force && !oldParserCache && state.nextScan && state.nextScan > Date.now()) return state;
+  if (!force && !oldParserCache && state.nextScan && state.nextScan > Date.now()) {
+    scheduleRefresh(execute,state.nextScan-Date.now());return state;
+  }
+  clearTimeout(runtime.refreshTimer);runtime.refreshTimer=undefined;
   failures.delete(id);jobs.set(id,{id,execute,status:'queued',controller:new AbortController(),previousUrls:[...new Set([...state.codes.flatMap(code=>code.sources.map(source=>source.url)),...state.report?.visited??[]])].slice(0,16)});
   revisions.set(id,(revisions.get(id)??0)+1);
   await writeMarker(id);drain();
@@ -160,6 +173,7 @@ export async function searchHealth() {
 /** Called synchronously before Next.js closes the HTTP server. */
 export function checkpointSearches(){
   runtime.stopping=true;
+  clearTimeout(runtime.refreshTimer);runtime.refreshTimer=undefined;
   for(const job of jobs.values()){
     if(job.report&&understood(job.report)){
       let temporary:string|undefined;

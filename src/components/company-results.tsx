@@ -103,6 +103,7 @@ export function CompanyResults({ id, initialState }: { id: number; initialState:
       {error && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
       {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
       {state?.report && <p className="mt-3 text-base">Найдено: {state.report.couponsFound ?? state.codes.length} · Прочитано страниц: {state.report.pagesRead}.</p>}
+      <p className="mt-2 text-sm text-muted-foreground">Автообновление каждые 5 минут, пока сервер запущен.</p>
       {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
         <div className="mt-3 space-y-2">
           <p>PromoSpy {APP_VERSION}</p>
