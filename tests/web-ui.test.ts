@@ -5,16 +5,22 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { chromium } from 'playwright';
+import { chromium, type Page } from 'playwright';
 import { parseMerchantPage } from '../src/lib/web-search';
 import { getCompanyById } from '../src/lib/promocodes';
 const networkPreload=new URL('./helpers/official-network.mjs',import.meta.url).href;
+async function startSearch(page:Page){
+ await page.getByText('Нажмите «Обновить», чтобы найти промокоды.',{exact:true}).waitFor();
+ assert.equal(await page.locator('article').count(),0);
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ await page.getByRole('button',{name:'Обновить',exact:true}).waitFor({state:'visible'});
+}
 
 test('home makes no scans; native links and favorites work without keys or carts',async()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-web-'));
  const code=parseMerchantPage('<title>ВкусВилл</title><article><h3>Первый заказ</h3><p>Промокод: SAVE10</p></article>','https://promokodi.ru/store/vkusvill',getCompanyById(54)!)[0];
  code.id='54:SAVE10';
- writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{engineVersion:ENGINE_VERSION,phase:'complete',codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:code.sources[0].url,official:false,outcome:'codes',count:1}]}}));
+ writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{engineVersion:ENGINE_VERSION,phase:'complete',codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:'https://promokodus.com/old',official:false,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера'}]}}));
  const base='http://127.0.0.1:3127';
  const server=spawn(process.execPath,['scripts/start.mjs'],{env:{...process.env,PORT:'3127',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);
@@ -26,6 +32,13 @@ test('home makes no scans; native links and favorites work without keys or carts
   const saved=await(await fetch(base+'/api/promocodes/saved?ids=54%3ASAVE10')).json();assert.equal(saved.codes[0].code,'SAVE10');
   browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
   const context=await browser.newContext({viewport:{width:1280,height:1000}}),page=await context.newPage();
+  const scanReply={codes:[code],status:'idle',lastScan:Date.now(),nextScan:Date.now()+300000,error:null,log:[],report:{pagesRead:1,warnings:[],sourceResults:[
+   {url:'https://vkusvill.ru/promocodes/',official:true,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера',errorCode:'restricted',httpStatus:200},
+   {url:'https://vkusvill.ru',official:true,outcome:'skipped',count:0,message:'Сайт запросил проверку браузера',errorCode:'restricted',httpStatus:200},
+  ]}};
+  await context.route('**/api/scan/54*',route=>route.fulfill({json:scanReply}));
+  const initialHtml=await(await fetch(base+'/company/54')).text();
+  assert.ok(!initialHtml.includes('SAVE10'));assert.ok(!initialHtml.includes('promokodus.com'));
   const errors:string[]=[],api:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/'))api.push(request.url());});
   await page.goto(base,{waitUntil:'networkidle'});assert.equal(api.length,0);assert.equal(await page.locator('article').count(),0);
   assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),'/favicon.svg');
@@ -43,6 +56,9 @@ test('home makes no scans; native links and favorites work without keys or carts
   await page.goto(base+'/company/201');await page.getByRole('heading',{name:'Страница не найдена',exact:true}).waitFor();
   await page.goto(base);
   const merchant=page.getByRole('link',{name:'Промокоды ВкусВилл',exact:true});await merchant.hover();assert.equal(await merchant.evaluate(el=>getComputedStyle(el).transform),'none');await merchant.click();
+  assert.equal(api.length,0);await startSearch(page);
+  await page.getByText('Подробнее об обновлении',{exact:true}).click();
+  assert.equal(await page.getByText('Пропущен: Сайт запросил проверку браузера',{exact:false}).count(),1);assert.equal(await page.getByText('promokodus.com',{exact:false}).count(),0);
   await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Обновить',exact:true}).isEnabled(),true);
   assert.equal(await page.getByText(/Повтор через/).count(),0);
@@ -58,15 +74,16 @@ test('home makes no scans; native links and favorites work without keys or carts
   await page.getByRole('button',{name:'Условия SAVE10',exact:true}).click();assert.match(await page.locator('article').innerText(),/Первый заказ/);
   await page.setViewportSize({width:320,height:740});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();await page.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
-  // Opening a merchant starts one automatic search; manual refresh remains immediate.
+  // Opening or reloading a merchant stays empty; only a click starts a search.
   let posts=0;
   await page.route('**/api/scan/54*',route=>{
    if(route.request().method()==='POST')posts++;
    return route.fulfill({json:{codes:[],status:'idle',lastScan:null,nextScan:null,error:null,log:[]}});
   });
-  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,0);await startSearch(page);assert.equal(posts,1);
   assert.equal(await page.getByText(/Нажмите.*Найти промокоды/).count(),0);
   await page.getByRole('button',{name:'Обновить',exact:true}).click();assert.equal(posts,2);
+  await page.reload({waitUntil:'networkidle'});assert.equal(posts,2);assert.equal(await page.locator('article').count(),0);assert.equal(await page.getByText(/Результаты получены:/).count(),0);
   assert.deepEqual(errors,[]);
   // Bundled logos paint with JavaScript disabled, without letter placeholders.
   const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();
@@ -74,7 +91,7 @@ test('home makes no scans; native links and favorites work without keys or carts
   const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),1);
   assert.ok(await logos.evaluateAll(images=>images.every(img=>(img as HTMLImageElement).naturalWidth>0&&getComputedStyle(img).opacity==='1')));await native.close();
   const blocked=await browser.newContext();await blocked.addInitScript(()=>{const original=Storage.prototype.setItem;Object.defineProperty(window,'restorePromoStorage',{value:()=>{Storage.prototype.setItem=original;}});Storage.prototype.setItem=()=>{throw Error('storage disabled');};});
-  const blockedPage=await blocked.newPage();await blockedPage.goto(base+'/company/54',{waitUntil:'networkidle'});
+  const blockedPage=await blocked.newPage();await blocked.route('**/api/scan/54*',route=>route.fulfill({json:scanReply}));await blockedPage.goto(base+'/company/54',{waitUntil:'networkidle'});await startSearch(blockedPage);
   await blockedPage.getByRole('button',{name:'Сохранить SAVE10',exact:true}).click();
   await blockedPage.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).waitFor();
   await blockedPage.getByRole('alert').filter({hasText:'до перезагрузки или закрытия этой вкладки'}).waitFor();
@@ -129,7 +146,7 @@ test('home makes no scans; native links and favorites work without keys or carts
  }finally{await browser?.close();server.kill();}
 });
 
-test('empty cache -> automatic search -> official cards; refresh fetches sources again',async()=>{
+test('empty cache -> explicit click -> fresh official cards; refresh fetches sources again',async()=>{
  const {readFileSync}=await import('node:fs');
  const directory=mkdtempSync(path.join(tmpdir(),'promospy-official-ui-'));
  const requestLog=path.join(directory,'requests.txt');
@@ -144,7 +161,7 @@ test('empty cache -> automatic search -> official cards; refresh fetches sources
   assert.ok(ready,logs);
   browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
   const page=await browser.newPage();
-  await page.goto(base+'/company/54');
+  await page.goto(base+'/company/54');await startSearch(page);
   await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).waitFor();
   assert.ok((await page.locator('article').innerText()).includes('На официальном сайте'));
   assert.equal(await page.getByLabel('Без истёкших').isChecked(),true);
@@ -172,7 +189,7 @@ test('cycle 3: clipboard feedback follows the latest click and its timer restart
  try {
   let ready=false;for(let i=0;i<60;i++){try{ready=(await fetch(base+'/api/health')).ok;}catch{}if(ready)break;if(server.exitCode!==null)throw Error(logs);await new Promise(resolve=>setTimeout(resolve,250));}assert.ok(ready,logs);
   browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
-  const page=await browser.newPage();await page.goto(base+'/company/54');
+  const page=await browser.newPage();await page.goto(base+'/company/54');await startSearch(page);
   const copy=page.getByRole('button',{name:'Скопировать 1раз',exact:true});await copy.waitFor();
   await page.evaluate(()=>{
    let calls=0;
@@ -205,7 +222,7 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
    if(route.request().method()==='POST')posts++;
    return route.fulfill({json:{codes:[],status:'idle',lastScan:deadline-300000,nextScan:posts>1?deadline+300000:deadline,error:null,log:[]}});
   });
-  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,0);await startSearch(page);assert.equal(posts,1);
   await page.clock.fastForward(31000);await page.waitForTimeout(100);
   assert.equal(posts,2,'an open page must initiate a new search after its cache expires');
   let attempts=0;const retryUrls:string[]=[];
@@ -225,7 +242,7 @@ test('open merchant renews an expired cache and retries a failed manual refresh 
    return route.fulfill({json:{codes:[],status:'idle',lastScan:serverTime,nextScan:serverTime+300000,serverTime,error:null,log:[]}});
   });
   await page.clock.setSystemTime(new Date('2030-01-01T00:00:00Z'));
-  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,1);
+  await page.goto(base+'/company/54',{waitUntil:'networkidle'});assert.equal(posts,0);await startSearch(page);assert.equal(posts,1);
   await page.clock.fastForward(31000);await page.waitForTimeout(100);assert.equal(posts,1);
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();server.kill();}
@@ -244,7 +261,7 @@ test('search and favorites work without recent browser AbortSignal helpers',asyn
    Object.defineProperties(AbortSignal,{any:{value:undefined,configurable:true},timeout:{value:undefined,configurable:true}});
    Object.defineProperty(AbortSignal.prototype,'throwIfAborted',{value:undefined,configurable:true});
   });
-  await page.goto(base+'/company/54');
+  await page.goto(base+'/company/54');await startSearch(page);
   await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).waitFor({timeout:5000});
   await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).click();
   await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
@@ -265,7 +282,7 @@ test('favorites transfer survives reload and invalid files; hidden and offline p
   const context=await browser.newContext({acceptDownloads:true}),page=await context.newPage(),errors:string[]=[];
   page.on('pageerror',error=>errors.push(error.message));
   const requests:string[]=[];page.on('request',request=>{if(request.url().includes('/api/'))requests.push(request.url());});
-  await page.clock.install({time:new Date()});await page.goto(base+'/company/54');
+  await page.clock.install({time:new Date()});await page.goto(base+'/company/54');await startSearch(page);
   await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).waitFor();
   await page.getByRole('button',{name:'Сохранить 1раз',exact:true}).click();await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
   await page.getByText(/^Обновлено:/).waitFor();await page.getByText('Перенос избранного',{exact:true}).click();
@@ -288,7 +305,7 @@ test('favorites transfer survives reload and invalid files; hidden and offline p
   await context.setOffline(true);await page.getByText(/Нет подключения. Сохранённые копии доступны/).waitFor();
   before=requests.length;await page.clock.fastForward(90000);await page.waitForTimeout(50);assert.equal(requests.length,before);assert.equal(await page.locator('article').count(),1);
   resumed=page.waitForResponse(response=>response.url().includes('/api/promocodes/saved?'));await context.setOffline(false);await resumed;
-  await page.goto(base+'/company/54');await page.getByRole('button',{name:'Удалить из избранного 1раз',exact:true}).waitFor();
+  await page.goto(base+'/company/54');await startSearch(page);await page.getByRole('button',{name:'Удалить из избранного 1раз',exact:true}).waitFor();
   await page.evaluate(()=>{Reflect.set(window,'promoHidden',false);Object.defineProperty(document,'hidden',{configurable:true,get:()=>Reflect.get(window,'promoHidden')===true});});
   await hide();before=requests.length;await page.clock.fastForward(90000);await page.waitForTimeout(50);assert.equal(requests.length,before);
   resumed=page.waitForResponse(response=>response.url().includes('/api/scan/54'));await reveal();await resumed;
@@ -311,7 +328,7 @@ test('ВкусВилл source failures do not prevent a public fallback from app
   const health=await(await fetch(base+'/api/health')).json();assert.equal(health.version,APP_VERSION);
   browser=await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE?{executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE}:{})});
   const page=await browser.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(base+'/company/54');await page.getByRole('button',{name:'Сохранить TESTVV20',exact:true}).waitFor();
+  await page.goto(base+'/company/54');await startSearch(page);await page.getByRole('button',{name:'Сохранить TESTVV20',exact:true}).waitFor();
   for(let i=0;i<100&&await page.getByRole('button',{name:'Обновить',exact:true}).isDisabled();i++)await page.waitForTimeout(100);
   await page.getByText('Подробнее об обновлении',{exact:true}).click();
   await page.getByText('PromoSpy '+APP_VERSION,{exact:true}).waitFor();

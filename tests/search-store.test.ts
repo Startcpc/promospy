@@ -201,3 +201,31 @@ test('five-minute refresh continues without a page request and coalesces with co
   release?.();t.mock.timers.reset();
  }
 });
+
+test('fresh search view excludes old codes and diagnostics before progress and after a partial refresh',async()=>{
+ const at=Date.now()-100000;
+ const oldCode={id:'54:OLDSNAPSHOT',companyId:54,code:'OLDSNAPSHOT',description:'Previous publication',discount:'10%',status:'found' as const,conditions:[],found:at,sources:[{url:'https://promokodus.com/old',name:'promokodus.com',seenAt:at}]};
+ writeFileSync(path.join(dir,'54.json'),JSON.stringify({companyId:54,at,report:{...report,codes:[oldCode],sourceResults:[{url:'https://promokodus.com/old',official:false,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера'}]}}));
+ const fresh={...oldCode,id:'54:NEWREAD',code:'NEWREAD',found:Date.now(),sources:[{url:'https://vkusvill.ru/promocodes/',name:'vkusvill.ru',seenAt:Date.now()}]};
+ let release!:()=>void,allowProgress!:()=>void;
+ const progressGate=new Promise<void>(resolve=>{allowProgress=resolve;}),finishGate=new Promise<void>(resolve=>{release=resolve;});
+ const current={...report,codes:[fresh],sourceResults:[{url:fresh.sources[0].url,official:true,outcome:'codes' as const,count:1}]};
+ try{
+  await requestSearch(54,async(_company,_signal,_read,progress)=>{await progressGate;progress?.(current);await finishGate;return current;},true);
+  let view=await searchState(54,true);assert.deepEqual(view.codes,[]);assert.equal(view.report,undefined);assert.equal(view.lastScan,null);
+  allowProgress();await new Promise<void>(resolve=>setImmediate(resolve));
+  view=await searchState(54,true);assert.deepEqual(view.codes.map(c=>c.code),['NEWREAD']);assert.ok(!JSON.stringify(view).includes('promokodus.com'));
+  release();await settle(54);
+  view=await searchState(54,true);assert.deepEqual(view.codes.map(c=>c.code),['NEWREAD']);assert.ok(!JSON.stringify(view).includes('promokodus.com'));
+  assert.ok((await searchState(54)).codes.some(c=>c.code==='OLDSNAPSHOT'),'historical copies remain available to favorites without entering the fresh view');
+ }finally{allowProgress();release();await settle(54);}
+});
+
+test('failed fresh reading cannot display cached offers or the old successful scan time',async()=>{
+ const at=Date.now()-100000;
+ const code={id:'54:PRIOR',companyId:54,code:'PRIOR',description:'Previous publication',discount:'10%',status:'found' as const,conditions:[],found:at,sources:[{url:'https://vkusvill.ru/promocodes/',name:'vkusvill.ru',seenAt:at}]};
+ writeFileSync(path.join(dir,'54.json'),JSON.stringify({companyId:54,at,report:{...report,codes:[code]}}));
+ await requestSearch(54,async()=>{throw Error('network failed');},true);await settle(54);
+ const view=await searchState(54,true);assert.equal(view.status,'failed');assert.deepEqual(view.codes,[]);assert.equal(view.lastScan,null);assert.equal(view.report,undefined);assert.doesNotMatch(view.notice??'',/Показываем сохранённые/);
+ assert.equal((await searchState(54)).codes[0].code,'PRIOR');
+});

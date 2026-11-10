@@ -42,7 +42,7 @@ async function writeMarker(id:number,retry?:number){
 function mergeWithSaved(fresh: PromoCode[], old: PromoCode[]) {
   return mergeOffers([...fresh,...old]).slice(0,100);
 }
-export async function searchState(id: number): Promise<MerchantSearchState> {
+export async function searchState(id: number, freshOnly = false): Promise<MerchantSearchState> {
   if (!getCompanyById(id)) throw new Error('Магазин не найден');
   for(let attempt=0;attempt<5;attempt++){
     const revision=revisions.get(id)??0;
@@ -52,15 +52,15 @@ export async function searchState(id: number): Promise<MerchantSearchState> {
     if(revision!==(revisions.get(id)??0))continue;
     const job=jobs.get(id);
     const failure:Failure|undefined=failures.get(id)??(interrupted?.retry?{message:'Предыдущий поиск не завершился',retry:interrupted.retry}:undefined);
-    const report=job?.report??failure?.report??(interrupted&&!failure&&result?{...result.report,phase:undefined}:result?.report);
+    const report=freshOnly&&job?job.report:freshOnly&&failure?failure.report:job?.report??failure?.report??(interrupted&&!failure&&result?{...result.report,phase:undefined}:result?.report);
     const {codes: _codes,...summary} = report ?? {codes:[]};
     return {
-      codes: job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
-      status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:result?.at ?? null,
+      codes: freshOnly ? job ? job.report?.codes ?? [] : failure ? failure.report?.codes ?? [] : (result?.report.codes ?? []).filter(code=>!code.cached) : job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
+      status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:freshOnly&&(job||failure)?null:result?.at ?? null,
       serverTime:Date.now(),
       nextScan:failure?.retry ?? (result ? result.at + SEARCH_REFRESH_INTERVAL_MS : null),error:null,log:[],
       ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
-      ...(failure ? {notice:failure.storageError ? 'Не удалось сохранить кеш. Результаты доступны до перезапуска сервера.' : result?.report.codes.length ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : failure.report?.pagesRead ? 'Страницы загрузились, но извлечь промокоды не удалось. Можно повторить поиск.' : 'Источники не загрузились. Можно повторить поиск.'} : {}),
+      ...(failure ? {notice:failure.storageError ? 'Не удалось сохранить кеш. Результаты доступны до перезапуска сервера.' : !freshOnly&&result?.report.codes.length ? 'Показываем сохранённые предложения. Новые источники проверим при следующем обновлении.' : failure.report?.codes.length ? 'Поиск завершён частично. Показаны предложения из прочитанных источников.' : failure.report?.pagesRead ? 'Страницы загрузились, но извлечь промокоды не удалось. Можно повторить поиск.' : 'Источники не загрузились. Можно повторить поиск.'} : {}),
     };
   }
   throw new Error('Состояние поиска меняется. Повторите запрос.');

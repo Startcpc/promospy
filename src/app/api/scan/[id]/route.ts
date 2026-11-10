@@ -10,7 +10,9 @@ async function handle(request:NextRequest,context:Context,search:boolean){
  if(!/^\d+$/.test(id)||!getCompanyById(Number(id)))return NextResponse.json({error:'Магазин не найден'},{status:404});
  if(search&&!allowedRequestOrigin(request.headers.get('origin'),request.url,request.headers.get('host'),configuredPublicOrigin()))return NextResponse.json({error:'Недопустимый источник запроса'},{status:403});
  try {
-  const result=await (search?requestSearch(Number(id),undefined,request.nextUrl.searchParams.get("refresh") === "1"):searchState(Number(id)));
+  const freshOnly=request.nextUrl.searchParams.get('fresh')==='1';
+  if(search)await requestSearch(Number(id),undefined,request.nextUrl.searchParams.get("refresh") === "1");
+  const result=await searchState(Number(id),freshOnly);
   return NextResponse.json(result,{status:result.status==='running'||result.status==='queued'?202:200,headers:{'Cache-Control':'no-store'}});
  }catch{return NextResponse.json({error:'Поиск временно недоступен'},{status:503});}
 }
