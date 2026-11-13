@@ -1,0 +1,17 @@
+# Optional: docker compose -f compose.yaml -f compose.ca.yaml up -d --build --wait
+services:
+  promospy:
+    build:
+      secrets:
+        - proxy_ca
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/proxy-ca.pem
+    volumes:
+      - type: bind
+        source: ${PROMO_CA_FILE:?Set PROMO_CA_FILE to your trusted CA file}
+        target: /run/proxy-ca.pem
+        read_only: true
+
+secrets:
+  proxy_ca:
+    file: ${PROMO_CA_FILE:?Set PROMO_CA_FILE to your trusted CA file}
