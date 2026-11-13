@@ -1,7 +1,7 @@
-# PromoSpy 0.13.1
+# PromoSpy 0.14.0
 
 Поддерживается только ВкусВилл (54). Реестр магазинов и логотип содержат только его. Старая SQLite-база, Prisma и связанные инструменты удалены.
 
 Страница открывается пустой, без кодов и старого журнала. Первый поиск запускается только кнопкой «Обновить». Свежий режим API не подмешивает сохранённые предложения при ошибках или частичном поиске; избранное сохраняет свои копии. После первого нажатия сервер обновляет результаты каждые 5 минут, включая работу без открытой вкладки. При остановке сервера таймер отменяется. CAPTCHA, Retry-After и robots.txt соблюдаются; ограничения источников не обходятся.
 
-Команды: `python3 start.py`, `pnpm check`, `pnpm test:live 54`, `pnpm audit:sources 54`. Избранное и резервирование активного кеша сохранены. Документация: README.md, START_HERE.md, docs/server-setup.md, docs/release-0.13.0.md.
+Команды: `python3 start.py`, `pnpm check`, `pnpm test:live 54`, `pnpm audit:sources 54`. Избранное и резервирование активного кеша сохранены. Docker: `docker compose up -d --build --wait`; проверка настоящего поиска внутри контейнера: `docker compose exec -T promospy node scripts/test-container.mjs --live`. Именованный том хранит кеш; образ работает без root. Документация: docs/docker.md, README.md, START_HERE.md, docs/server-setup.md, docs/release-0.13.0.md.

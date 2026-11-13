@@ -67,3 +67,24 @@ jobs:
       - run: pnpm test
       - run: pnpm test:search
       - run: pnpm test:launcher
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build --wait --wait-timeout 120
+      - run: node scripts/test-container.mjs
+      - name: Verify volume persistence after container replacement
+        run: |
+          docker compose exec -T promospy node -e "require('node:fs').writeFileSync('/app/data/.ci-persistence','ok')"
+          docker compose up -d --no-build --force-recreate --wait --wait-timeout 120
+          docker compose exec -T promospy node -e "const fs=require('node:fs');require('node:assert/strict').equal(fs.readFileSync('/app/data/.ci-persistence','utf8'),'ok');fs.unlinkSync('/app/data/.ci-persistence')"
+      - if: always()
+        run: docker compose logs --tail=100
+      - if: always()
+        run: docker compose down

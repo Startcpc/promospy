@@ -1,0 +1,15 @@
+services:
+  promospy:
+    image: promospy:local
+    build:
+      context: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PROMO_PORT:-3000}:3000"
+    volumes:
+      - promo-data:/app/data
+    stop_grace_period: 20s
+
+volumes:
+  promo-data:

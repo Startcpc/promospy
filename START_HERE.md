@@ -1,5 +1,7 @@
 # Запуск PromoSpy
 
+Если установлен Docker Desktop, используйте [инструкцию Docker](docs/docker.md): в папке проекта выполните `docker compose up -d --build --wait`, откройте http://localhost:3000 и нажмите «Обновить». Python и Node.js для этого варианта не нужны.
+
 ## Клонировать и запустить в VS Code
 
 Один раз установите [Git](https://git-scm.com/downloads) для клонирования и [Python 3.9+](https://www.python.org/downloads/) для запуска. На Windows при установке Python включите **Add python.exe to PATH**. После установки перезапустите VS Code.

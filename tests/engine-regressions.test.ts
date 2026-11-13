@@ -183,5 +183,6 @@ test('distribution contains only the VkusVill catalogue and no legacy database o
  const metadata=JSON.parse(readFileSync(new URL('package.json',root),'utf8'));
  for(const command of ['db:backup','db:restore','test:database'])assert.equal(metadata.scripts[command],undefined);
  assert.ok(!metadata.scripts.check.includes('test:database'));
- assert.deepEqual(readdirSync(new URL('docs/',root)).sort(),['release-0.13.0.md','server-setup.md']);
+ assert.ok(readdirSync(new URL('docs/',root)).includes('server-setup.md'));
+ for(const file of readdirSync(new URL('docs/',root)))assert.ok(!/^(?:release-0\.(?:8|10|11|12)\.|audit-|engine-|project-review-|review-|final-review-)/.test(file),file);
 });

@@ -1,0 +1,22 @@
+# Only production source and build inputs enter the Docker build context.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!next.config.ts
+!tsconfig.json
+!postcss.config.mjs
+!src/
+!src/**
+!public/
+!public/**
+!scripts/
+!scripts/start.mjs
+!scripts/copy-standalone.mjs
+!scripts/test-container.mjs
+**/.env*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx
