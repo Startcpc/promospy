@@ -1,42 +1,36 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, ScanLine, ShieldCheck, Heart, Search } from "lucide-react";
-import { SavedPromosLink } from "@/components/saved-promos-link";
-import { AnimatedWord } from "@/components/animated-word";
-import { BrandLogo } from "@/components/brand-logo";
+import { ArrowRight, ArrowUpRight, Bookmark, Check, Globe2, Heart, Leaf, MousePointer2, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { HeroRadar } from "@/components/hero-radar";
+import { MotionSurface, ScrollReveal } from "@/components/motion-surface";
 import { companies } from "@/lib/companies";
 
 export default function Home() {
   const company = companies[0];
-  return <div className="retro-page min-h-screen bg-white text-[#16213e]">
-    <header className="border-b-2 border-[#16213e]">
-      <nav aria-label="Главная навигация" className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
-        <Link href="/" aria-label="PromoSpy — на главную" className="flex items-center gap-2 text-2xl font-black tracking-tight"><span className="retro-brand border-2 border-[#16213e] bg-[#ff6b24] p-2"><ScanLine aria-hidden="true" className="h-6 w-6" /></span>Promo<span className="-ml-2 text-[#e5550b]">Spy</span></Link>
-        <SavedPromosLink />
-      </nav>
-    </header>
-    <main className="mx-auto max-w-7xl px-5 pb-10 sm:px-8">
-      <section className="retro-hero relative grid items-center gap-8 border-b-2 border-[#16213e] py-10 sm:py-14 lg:grid-cols-[1.4fr_1fr]">
-        <div className="relative z-10 min-w-0">
-          <p className="mb-5 inline-block border-2 border-[#16213e] bg-[#dbf6e5] px-3 py-1 font-bold">ВкусВилл · продукты с выгодой</p>
-          <h1 aria-label="Лови выгоду во ВкусВилл" className="retro-title font-black uppercase"><AnimatedWord text="ЛОВИ" /><br /><span className="text-[#2458e8]"><AnimatedWord text="ВЫГОДУ." /></span></h1>
-          <p className="mt-5 max-w-lg text-lg sm:text-xl">Промокоды ВкусВилл с условиями, сроками и ссылками на публикации. Начинаем с официального сайта.</p>
-          <Link href="/company/54" className="retro-button mt-7 inline-flex items-center gap-4 border-2 border-[#16213e] bg-[#ff6b24] px-5 py-3 text-lg font-black">Промокоды ВкусВилл<ArrowRight aria-hidden="true" className="h-5 w-5 shrink-0" /></Link>
-          <p className="mt-4 text-sm text-muted-foreground">Бесплатно. Без регистрации.</p>
+  return <div className="home-page">
+    <SiteHeader />
+    <main className="home-main" id="top">
+      <MotionSurface className="hero-panel">
+        <div className="hero-copy">
+          <p className="hero-eyebrow"><Leaf size={14} aria-hidden="true" /> Только ВкусВилл <span /> Только то, что нужно</p>
+          <h1 className="hero-title" aria-label="Твой вкус. Твоя выгода."><span className="title-line"><span>Твой вкус.</span></span>{' '}<span className="title-line title-line-accent"><span>Твоя выгода.</span></span></h1>
+          <p className="hero-description">Промокоды любимого магазина — с условиями, сроками и ссылками на публикации. Всё важное для следующего заказа в одном месте.</p>
+          <div className="hero-actions"><Link href="/company/54" className="button button-lime">Промокоды ВкусВилл <ArrowRight className="button-arrow" size={19} aria-hidden="true" /></Link><a href="#how" className="hero-secondary">Как это работает <ArrowUpRight size={16} aria-hidden="true" /></a></div>
+          <p className="hero-fineprint"><span><Check size={13} aria-hidden="true" /> Бесплатно</span><span><Check size={13} aria-hidden="true" /> Без регистрации</span></p>
         </div>
-        <div className="retro-poster relative mx-auto hidden aspect-square w-full max-w-sm items-center justify-center sm:flex" aria-hidden="true">
-          <span className="retro-star" /><span className="retro-stamp border-2 border-[#16213e] bg-white px-5 py-4 text-center text-4xl font-black leading-tight">НАШЁЛ?<br /><span className="text-[#2458e8]">ЗАБИРАЙ.</span><ArrowUpRight className="mx-auto mt-3 h-9 w-9" /></span>
-        </div>
-      </section>
-      <section className="grid gap-8 py-9 lg:grid-cols-[1fr_1.2fr]" aria-labelledby="offers-title">
-        <div className="flex items-start gap-4">
-          <div className="h-20 w-20 shrink-0 overflow-hidden border-2 border-[#16213e] bg-[#2dbd65] p-2"><BrandLogo src={company.logo} name={company.name} /></div>
-          <div className="min-w-0"><h2 id="offers-title" className="text-2xl font-black sm:text-3xl">Твои предложения<span className="text-[#e5550b]">.</span></h2><p className="mt-3 text-muted-foreground">Первый или повторный заказ? Найди подходящие условия на странице промокодов.</p><a href={company.website} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block font-semibold underline">Официальный сайт ВкусВилл ↗</a></div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {[{icon:Search,title:"Найди",text:"Поиск по коду, скидке и условиям заказа."},{icon:ShieldCheck,title:"Проверь условия",text:"Публикация на сайте не гарантирует применение в корзине."},{icon:Heart,title:"Сохрани",text:"Коды и условия останутся в избранном после перезагрузки."}].map(({icon:Icon,title,text})=><div key={title} className="border-2 border-[#16213e] p-4"><Icon aria-hidden="true" className="mb-3 h-6 w-6 text-[#2458e8]" /><h3 className="font-black">{title}</h3><p className="mt-2 text-sm text-muted-foreground">{text}</p></div>)}
+        <HeroRadar logo={company.logo} name={company.name} />
+      </MotionSurface>
+      <div className="trust-strip"><span><Globe2 size={16} aria-hidden="true" /> Открытые источники</span><span><ListIcon /> Условия рядом с кодом</span><span><Bookmark size={16} aria-hidden="true" /> Избранное под рукой</span></div>
+      <section className="how-section" id="how" aria-labelledby="how-title">
+        <ScrollReveal className="section-heading"><div><span className="eyebrow"><Sparkles size={14} aria-hidden="true" /> Меньше поисков. Больше ясности.</span><h2 id="how-title">От находки до заказа.<br /><span>Три простых шага.</span></h2></div><p>Нажми «Обновить», посмотри условия и сохрани подходящее предложение.</p></ScrollReveal>
+        <div className="feature-grid">
+          {[{icon:Search,number:'01',title:'Найди своё',text:'Запусти поиск по кнопке «Обновить». Публикации появятся по мере чтения источников.',label:'Свежий поиск',tone:'mint'},{icon:ShieldCheck,number:'02',title:'Посмотри условия',text:'Первый заказ, минимальная сумма, срок действия. У каждой находки есть ссылка на источник.',label:'Внимание к деталям',tone:'lime'},{icon:Heart,number:'03',title:'Оставь под рукой',text:'Сохраняй коды и условия в избранное. Возвращайся к ним, когда соберёшь корзину.',label:'Твои находки',tone:'pink'}].map(({icon:Icon,number,title,text,label,tone},index)=><ScrollReveal key={number} delay={index*75}><MotionSurface className={`feature-card feature-${tone}`}><div className="feature-top"><span className="feature-icon"><Icon size={23} aria-hidden="true" /></span><span className="step-number">{number}</span></div><h3>{title}</h3><p>{text}</p><span className="feature-label"><MousePointer2 size={12} aria-hidden="true" />{label}</span></MotionSurface></ScrollReveal>)}
         </div>
       </section>
-      <footer className="mt-6 border-t-2 border-[#16213e] pt-5 font-black">PromoSpy <span className="text-[#e5550b]">★</span> Лови свой момент.</footer>
+      <ScrollReveal><section className="brand-note"><div className="brand-note-icon"><Leaf size={23} aria-hidden="true" /></div><div><h2>Один магазин. Всё внимание — ему.</h2><p>PromoSpy ищет предложения ВкусВилл. Начинаем с официальной страницы и дополняем результат открытыми каталогами.</p></div><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-link">Официальный сайт ВкусВилл <ArrowUpRight size={16} aria-hidden="true" /></a></section></ScrollReveal>
     </main>
+    <SiteFooter />
   </div>;
 }
+function ListIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="m3 7 2 2 4-4M12 7h9M3 15l2 2 4-4M12 15h9" /></svg>;}

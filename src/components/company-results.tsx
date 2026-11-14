@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowUpRight, Radar, RefreshCw, Search } from "lucide-react";
 import { getCompanyById, matchesPromoQuery, effectiveStatus, visiblePromoCodes } from "@/lib/promocodes";
 import type { MerchantSearchState } from "@/lib/search-store";
 import { BrandLogo } from "@/components/brand-logo";
-import { SavedPromosLink } from "@/components/saved-promos-link";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { PromoCard, formatPromoDate } from "@/components/promo-card";
 import { browserRequestSignal } from "@/lib/browser-request";
 import { canRequestFromPage, watchPageActivity } from "@/lib/page-activity";
@@ -96,28 +97,24 @@ export function CompanyResults({ id }: { id: number }) {
       ?[new URL(source.failureUrl??source.url).hostname,source.errorCode,source.httpStatus,source.message].join('|'):source.url;
     if(sourceKeys.has(key))return false;sourceKeys.add(key);return true;
   });
-  return <main className="mx-auto min-h-screen max-w-5xl px-4 py-6 sm:px-6">
-    <nav aria-label="Навигация" className="mb-5 flex flex-wrap items-center justify-between gap-3">
-    <Link href="/" className="inline-flex items-center gap-2 text-sm"><ArrowLeft className="h-4 w-4" />На главную</Link>
-    <SavedPromosLink />
-    </nav>
-    <header className="mb-6 flex items-center gap-4">
-      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg p-2" style={{ backgroundColor: `#${company.bgColor}` }}><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
-      <div className="min-w-0"><h1 className="text-2xl font-bold sm:text-3xl">Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-sm underline">Сайт магазина</a></div>
+  return <><SiteHeader back /><main className="content-page">
+    <header className="store-heading">
+      <div className="store-logo"><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
+      <div className="min-w-0"><span className="page-eyebrow">Твои следующие находки</span><h1>Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer">Сайт магазина <ArrowUpRight size={12} aria-hidden="true" /></a></div>
     </header>
-    <p className="mb-4 text-base text-muted-foreground">Ищем в открытых источниках. Закрытые сайты пропускаем.</p>
-    <section className="scan-panel mb-6 border-2 border-[#16213e] bg-white p-4" aria-live="polite">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-lg font-bold">{state.status === "queued" ? "Поиск начнётся автоматически…" : busy ? state.report?.phase === "sources" ? "Ищем на других сайтах…" : "Проверяем официальный сайт…" : "Промокоды"}</p>
-        <button onClick={refresh} disabled={busy || refreshing || offline} className="retro-button inline-flex items-center gap-2 border-2 border-[#16213e] bg-[#ff6b24] px-4 py-2 font-bold text-[#16213e] disabled:opacity-40"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />{busy || refreshing ? "Обновляем…" : "Обновить"}</button>
+    <p className="page-intro">Ищем в открытых источниках. Закрытые сайты пропускаем.</p>
+    <section className="scan-panel" aria-live="polite">
+      <div className="scan-top">
+        <div className="scan-heading"><span className="scan-symbol"><Radar size={23} aria-hidden="true" /></span><div><p>{state.status === "queued" ? "Поиск начнётся автоматически…" : busy ? state.report?.phase === "sources" ? "Ищем на других сайтах…" : "Проверяем официальный сайт…" : "Поиск выгодных публикаций"}</p><small>{requested ? "Собираем то, что опубликовано в источниках" : "Начнём, когда будешь готов"}</small></div></div>
+        <button onClick={refresh} disabled={busy || refreshing || offline} className="button button-primary"><RefreshCw aria-hidden="true" size={16} className={busy ? "animate-spin" : ""} />{busy || refreshing ? "Обновляем…" : "Обновить"}</button>
       </div>
       {offline && <p role="status" className="mt-3 text-sm text-muted-foreground">Нет подключения. Поиск доступен после подключения.</p>}
       {error && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
       {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
-      {state?.report && <p className="mt-3 text-base">Найдено: {state.report.couponsFound ?? state.codes.length} · Прочитано страниц: {state.report.pagesRead}.</p>}
-      <p className="mt-2 text-sm text-muted-foreground">После нажатия «Обновить» — автообновление каждые 5 минут, пока сервер запущен.</p>
-      {state && <details className="mt-3 text-sm text-muted-foreground"><summary className="cursor-pointer font-medium">Подробнее об обновлении</summary>
-        <div className="mt-3 space-y-2">
+      {state?.report && <p className="scan-summary">Найдено: {state.report.couponsFound ?? state.codes.length} · Прочитано страниц: {state.report.pagesRead}.</p>}
+      <p className="scan-note">После нажатия «Обновить» — автообновление каждые 5 минут, пока сервер запущен.</p>
+      {state && <details className="scan-details"><summary>Подробнее об обновлении</summary>
+        <div className="diagnostic-body">
           <p>PromoSpy {APP_VERSION}</p>
           {state.report && <p>Официальных кодов: {state.report.officialCoupons ?? 0} · Пропущено из-за ограничений: {(state.report.pagesBlocked ?? 0)+(state.report.pagesSkipped ?? 0)} · Ошибок разбора: {state.report.parseFailures ?? 0}</p>}
           {state.report?.budget && <p>Страниц проверено по бюджету: {state.report.budget.pagesUsed} из {state.report.budget.pages}. Индексы и карты: {state.report.budget.discoveryUsed} из {state.report.budget.discoveryRequests}.</p>}
@@ -133,13 +130,13 @@ export function CompanyResults({ id }: { id: number }) {
         </div>
       </details>}
     </section>
-    <div className="mb-4 flex flex-wrap items-center gap-3">
-      <input aria-label="Поиск по промокодам и условиям" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Код, скидка или условия акции" className="min-w-48 flex-1 rounded-lg border bg-background px-3 py-2 text-sm" />
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} />Без истёкших</label>
+    <div className="filter-bar">
+      <label className="search-field"><Search size={17} aria-hidden="true" /><input aria-label="Поиск по промокодам и условиям" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Код, скидка или условия акции" /></label>
+      <label className="filter-check"><input type="checkbox" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} />Без истёкших</label>
     </div>
     {!state && !error ? <p className="py-10 text-center text-muted-foreground">Загружаем результаты…</p>
-      : codes.length ? <div className="grid gap-4 sm:grid-cols-2">{codes.map((code) => <PromoCard key={code.id} code={code} />)}</div>
-        : <p role="status" className="py-10 text-center text-muted-foreground">{!requested ? "Нажмите «Обновить», чтобы найти промокоды." : offline ? "Подключитесь к интернету, чтобы найти новые промокоды." : busy ? "Найденные коды появятся здесь автоматически." : error ? "Не удалось загрузить результаты. Повторяем запрос." : state.status === "failed" ? state.notice : query || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p>}
-    <details className="mt-8 border-t pt-4"><summary className="cursor-pointer text-base font-bold">О компании</summary><p className="mt-3 text-base text-muted-foreground">{company.description}</p></details>
-  </main>;
+      : codes.length ? <div className="results-grid">{codes.map((code) => <PromoCard key={code.id} code={code} />)}</div>
+        : <section className="empty-state"><div className="empty-icon"><Search size={27} aria-hidden="true" /></div><h2>{!requested ? "Хорошие находки начинаются здесь" : busy ? "В поисках твоей выгоды" : "Посмотрим ещё раз?"}</h2><p role="status">{!requested ? "Нажмите «Обновить», чтобы найти промокоды." : offline ? "Подключитесь к интернету, чтобы найти новые промокоды." : busy ? "Найденные коды появятся здесь автоматически." : error ? "Не удалось загрузить результаты. Повторяем запрос." : state.status === "failed" ? state.notice : query || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p></section>}
+    <details className="company-about"><summary>О компании</summary><p>{company.description}</p></details>
+  </main><SiteFooter /></>;
 }

@@ -4,7 +4,15 @@
 
 ## Запуск через Docker
 
-Установите и запустите Docker Desktop (Windows/macOS) либо Docker Engine с Compose v2 (Linux). В папке проекта:
+Установите и запустите Docker Desktop (Windows/macOS, Linux containers) либо Docker Engine (Linux). Готовый образ — без Git, Python, Node.js и локальной сборки:
+
+```sh
+docker run -d --name promospy --init --platform linux/amd64 -p 127.0.0.1:3000:3000 -v promospy-data:/app/data --restart unless-stopped rashid1501/promospy:0.15.0
+```
+
+Откройте **http://localhost:3000** → «Промокоды ВкусВилл» → **«Обновить»**. Образ `linux/amd64`; на Apple Silicon Docker Desktop использует эмуляцию. Порт доступен только с вашего компьютера. Логи: `docker logs -f --tail=100 promospy`. Остановка: `docker stop promospy`, повторный запуск: `docker start promospy`.
+
+Для самостоятельной сборки из репозитория, в папке проекта:
 
 ```sh
 docker compose up -d --build --wait
@@ -13,6 +21,10 @@ docker compose up -d --build --wait
 Откройте **http://localhost:3000** и нажмите «Обновить» на странице ВкусВилл. Коды появляются только после нажатия. Проверка реального поиска: `docker compose exec -T promospy node scripts/test-container.mjs --live`. Логи: `docker compose logs -f --tail=100`. Остановка: `docker compose stop`. Результаты сохраняются в томе.
 
 Инструкция с клонированием, обновлением, сменой порта и диагностикой: [docs/docker.md](docs/docker.md).
+
+## Интерфейс
+
+Светлый интерфейс с зелёным акцентом, анимированным радаром и адаптацией к телефону. Движение можно приостановить; системная настройка уменьшения анимации учитывается автоматически. Поиск, копирование и избранное работают без внешних библиотек анимации. [Дизайн и источники вдохновения](docs/design.md).
 
 ## Запуск без Docker
 

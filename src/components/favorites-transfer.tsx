@@ -21,11 +21,11 @@ export function FavoritesTransfer() {
       setMessage('Файл готов. Его можно загрузить в другом браузере.');
     } catch {setError('Не удалось скачать избранное. Попробуйте ещё раз.');}
   };
-  return <details className="mb-5 rounded-lg border bg-white p-3">
+  return <details className="transfer-panel">
     <summary className="cursor-pointer font-semibold">Перенос избранного</summary>
     <div className="mt-3 flex flex-wrap gap-3">
-      <button type="button" disabled={!hydrated || !items.length} onClick={download} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><Download aria-hidden="true" className="h-4 w-4" />Скачать файл</button>
-      <button type="button" disabled={!hydrated || reading} onClick={()=>input.current?.click()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40"><Upload aria-hidden="true" className="h-4 w-4" />{reading?'Читаем файл…':'Загрузить файл'}</button>
+      <button type="button" disabled={!hydrated || !items.length} onClick={download} className="secondary-button"><Download aria-hidden="true" className="h-4 w-4" />Скачать файл</button>
+      <button type="button" disabled={!hydrated || reading} onClick={()=>input.current?.click()} className="secondary-button"><Upload aria-hidden="true" className="h-4 w-4" />{reading?'Читаем файл…':'Загрузить файл'}</button>
       <input ref={input} type="file" accept=".json,application/json" aria-label="Файл избранного" className="hidden" onChange={async event=>{
         const file = event.target.files?.[0];event.target.value='';if(!file)return;
         setError('');setMessage('');setReading(true);

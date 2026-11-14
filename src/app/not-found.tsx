@@ -1,7 +1,11 @@
 import Link from 'next/link';
+import { Radar } from 'lucide-react';
+import { SiteHeader } from '@/components/site-header';
 export default function NotFound() {
-  return <main className="mx-auto max-w-5xl px-5 py-16 text-[#16213e]">
-    <h1 className="text-3xl font-black">Страница не найдена</h1>
-    <Link href="/" className="mt-6 inline-block text-lg underline">На главную</Link>
-  </main>;
+  return <><SiteHeader back /><main className="content-page"><section className="empty-state mt-12">
+    <div className="empty-icon"><Radar size={30} aria-hidden="true" /></div>
+    <h1 className="text-3xl font-medium tracking-tight">Страница не найдена</h1>
+    <p className="mt-4">Вернёмся к поиску хороших предложений.</p>
+    <Link href="/" className="button button-primary mt-6">На главную</Link>
+  </section></main></>;
 }

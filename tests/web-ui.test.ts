@@ -41,6 +41,17 @@ test('home makes no scans; native links and favorites work without keys or carts
   assert.ok(!initialHtml.includes('SAVE10'));assert.ok(!initialHtml.includes('promokodus.com'));
   const errors:string[]=[],api:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/'))api.push(request.url());});
   await page.goto(base,{waitUntil:'networkidle'});assert.equal(api.length,0);assert.equal(await page.locator('article').count(),0);
+  await page.getByRole('button',{name:'Приостановить анимацию',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Включить анимацию',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('.radar-sweep').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
+  await page.getByRole('button',{name:'Включить анимацию',exact:true}).press('Enter');
+  assert.equal(await page.locator('.radar-sweep').evaluate(el=>getComputedStyle(el).animationPlayState),'running');
+  const reduced=await browser.newContext({reducedMotion:'reduce'}),reducedPage=await reduced.newPage();
+  await reducedPage.goto(base,{waitUntil:'networkidle'});
+  assert.equal(await reducedPage.locator('.radar-sweep').evaluate(el=>getComputedStyle(el).animationName),'none');
+  assert.equal(await reducedPage.getByRole('button',{name:'Приостановить анимацию',exact:true}).isVisible(),false);
+  assert.equal(await reducedPage.locator('.scroll-reveal').evaluateAll(elements=>elements.every(el=>getComputedStyle(el).opacity==='1')),true);
+  await reduced.close();
   assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),'/favicon.svg');
   assert.equal((await fetch(base+'/favicon.svg')).status,200);
   assert.equal(await page.getByLabel('Поиск магазинов',{exact:true}).count(),0);

@@ -7,7 +7,7 @@ type Props = { src: string; name: string; accentColor?: string; size?: "sm" | "m
 export function BrandLogo({ src, name, className = "" }: Props) {
   const [failed, setFailed] = useState(false);
   return <div className={`relative flex h-full w-full items-center justify-center overflow-hidden ${className}`}>
-    {failed ? <span className="text-center text-base font-black text-[#16213e]">{name}</span>
+    {failed ? <span className="text-center text-base font-semibold text-foreground">{name}</span>
       : <img src={src} alt={`Логотип ${name}`} loading="eager" decoding="async" draggable={false}
         onError={() => setFailed(true)} className="h-full w-full object-contain" />}
   </div>;
