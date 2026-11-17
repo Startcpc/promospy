@@ -15,7 +15,7 @@ export default function Home() {
       <section className="hero-panel" aria-labelledby="hero-title">
         <div className="hero-copy">
           <p className="hero-eyebrow"><span className="eyebrow-dot" /> Маленькая привычка. Приятная экономия.</p>
-          <h1 className="hero-title" id="hero-title">Покупки<br />по вкусу.<br /><span>Скидки — кстати.</span></h1>
+          <h1 className="hero-title" id="hero-title">Покупки <br />по вкусу.<br /><span>Скидки — кстати.</span></h1>
           <p className="hero-description">Собираем промокоды ВкусВилл из открытых источников. Чтобы ты выбирал продукты, а не перебирал десятки вкладок.</p>
           <div className="hero-actions"><Link href="/company/54" className="button button-primary">Промокоды ВкусВилл <ArrowRight className="button-arrow" size={20} aria-hidden="true" /></Link></div>
           <p className="hero-fineprint"><span><Check size={15} aria-hidden="true" /> Бесплатно</span><span><Check size={15} aria-hidden="true" /> Без регистрации</span></p>
