@@ -66,6 +66,8 @@ pnpm check
 PROMO_TEST_CHROMIUM_EXECUTABLE=/usr/bin/chromium pnpm check
 # Отдельная проверка настоящей сети:
 pnpm test:live 54
+# Запущенное приложение: настоящий поиск, копирование и избранное в Chromium
+pnpm test:live:ui http://127.0.0.1:3000
 pnpm audit:sources 54
 pnpm audit --prod
 ```

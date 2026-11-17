@@ -20,7 +20,8 @@
     "cache:restore": "node --import ./scripts/register-ts.mjs scripts/search-cache.mjs restore",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:search && pnpm test:launcher && pnpm build && pnpm test:ui",
     "test:container": "node scripts/test-container.mjs",
-    "package:zip": "node scripts/package-release.mjs"
+    "package:zip": "node scripts/package-release.mjs",
+    "test:live:ui": "node scripts/test-live-ui.mjs"
   },
   "engines": {
     "node": ">=22.18.0"

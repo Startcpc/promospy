@@ -73,6 +73,30 @@ test('home makes no scans; native links and favorites work without keys or carts
   await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Обновить',exact:true}).isEnabled(),true);
   assert.equal(await page.getByText(/Повтор через/).count(),0);
+  // Sorting uses explicit source amounts/dates; missing values come last.
+  await page.route('**/api/scan/54*', route => route.fulfill({json:{...scanReply,codes:[
+    {...code,id:'54:LATER20',code:'LATER20',status:'official',minOrder:2000,expiresAt:Date.now()+86400000*5},
+    {...code,id:'54:SOON10',code:'SOON10',minOrder:1000,expiresAt:Date.now()+86400000},
+    {...code,id:'54:UNKNOWN',code:'UNKNOWN'},
+  ]}}));
+  await page.getByRole('button',{name:'Обновить',exact:true}).click();
+  await page.getByRole('button',{name:'Условия LATER20',exact:true}).waitFor();
+  await page.getByLabel('Сортировка промокодов').selectOption('minimum');
+  assert.match(await page.locator('article').first().innerText(),/SOON10/);
+  assert.match(await page.locator('article').last().innerText(),/UNKNOWN/);
+  await page.getByLabel('Сортировка промокодов').selectOption('expires');
+  assert.match(await page.locator('article').first().innerText(),/SOON10/);
+  await page.getByLabel('Официальные',{exact:true}).check();
+  assert.equal(await page.locator('article').count(),1);
+  assert.match(await page.locator('article').innerText(),/LATER20/);
+  await page.getByLabel('Поиск по промокодам и условиям').fill('NO_MATCH');
+  await page.getByRole('heading',{name:'Пока нет совпадений'}).waitFor();
+  await page.getByRole('button',{name:'Сбросить фильтры'}).click();
+  assert.equal(await page.locator('article').count(),3);
+  assert.equal(await page.getByLabel('Сортировка промокодов').inputValue(),'recommended');
+  await page.unroute('**/api/scan/54*');
+  await page.getByRole('button',{name:'Обновить',exact:true}).click();
+  await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).waitFor();
   await page.getByRole('button',{name:'Сохранить SAVE10',exact:true}).click();
   await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
   await page.waitForURL(base+'/saved');
@@ -113,6 +137,11 @@ test('home makes no scans; native links and favorites work without keys or carts
   const secondTab=await blocked.newPage();await secondTab.goto(base);
   await secondTab.evaluate(()=>{Reflect.get(window,'restorePromoStorage')();localStorage.setItem('promospy:saved-promos:vkusvill:v2',JSON.stringify([{id:'54:SAVE10',companyId:54,code:'SAVE10',savedAt:Date.now()}]));});
   await blockedPage.getByRole('button',{name:'Условия SAVE10',exact:true}).waitFor();
+  await secondTab.evaluate(()=>localStorage.setItem('promospy:saved-promos:vkusvill:v2','{broken'));
+  await blockedPage.waitForTimeout(100);
+  assert.equal(await blockedPage.getByRole('button',{name:'Условия SAVE10',exact:true}).count(),1);
+  await secondTab.evaluate(()=>localStorage.setItem('promospy:saved-promos:vkusvill:v2','[]'));
+  await blockedPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
   await secondTab.close();
   // Unicode IDs must not produce an oversized GET URL.
   const migration=await browser.newContext();const migrationPage=await migration.newPage();await migrationPage.goto(base);
@@ -124,6 +153,18 @@ test('home makes no scans; native links and favorites work without keys or carts
   await migrationPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
   assert.equal(await migrationPage.evaluate(()=>localStorage.getItem('promospy:saved-promos:v1')),legacy);
   await migrationPage.reload();await migrationPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();await migration.close();
+  const initiallyOffline=await browser.newContext();
+  await initiallyOffline.addInitScript(()=>Object.defineProperty(navigator,'onLine',{value:false,configurable:true}));
+  const offlinePage=await initiallyOffline.newPage();let offlineScans=0;
+  await initiallyOffline.route('**/api/scan/54*',route=>{offlineScans++;return route.fulfill({json:scanReply});});
+  await offlinePage.goto(base+'/company/54',{waitUntil:'networkidle'});
+  await offlinePage.getByText('Нет подключения. Поиск доступен после подключения.',{exact:true}).waitFor();
+  assert.equal(await offlinePage.getByRole('button',{name:'Обновить',exact:true}).isDisabled(),true);
+  await offlinePage.evaluate(()=>{Object.defineProperty(navigator,'onLine',{value:true,configurable:true});window.dispatchEvent(new Event('online'));});
+  await offlinePage.waitForTimeout(100);
+  assert.equal(await offlinePage.getByRole('button',{name:'Обновить',exact:true}).isEnabled(),true);
+  assert.equal(offlineScans,0);
+  await startSearch(offlinePage);assert.equal(offlineScans,1);await initiallyOffline.close();
   const batches=await browser.newContext();
   await batches.addInitScript(()=>{localStorage.setItem('promospy:saved-promos:vkusvill:v2',JSON.stringify(Array.from({length:100},(_,i)=>({id:`54:A${i}${'Ж'.repeat(55)}`,companyId:54,code:`A${i}${'Ж'.repeat(55)}`,savedAt:Date.now()}))));});
   const batchPage=await batches.newPage(),lookups:string[]=[];
