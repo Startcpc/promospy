@@ -31,6 +31,8 @@ export function CompanyResults({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [activeOnly, setActiveOnly] = useState(true);
+  const [officialOnly, setOfficialOnly] = useState(false);
+  const [sort, setSort] = useState("recommended");
   const [refreshing, setRefreshing] = useState(false);
   const [starting, setStarting] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -45,6 +47,7 @@ export function CompanyResults({ id }: { id: number }) {
     let pendingForce = false;
     let activeRequest: ReturnType<typeof browserRequestSignal> | undefined;
     const sync = async (method: "GET" | "POST", force = false) => {
+      setOffline(navigator.onLine === false);
       if(!requestedRef.current)return;
       clearTimeout(timer);
       setOffline(navigator.onLine === false);
@@ -61,6 +64,7 @@ export function CompanyResults({ id }: { id: number }) {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? "Ошибка загрузки");
+        if (!data || !Array.isArray(data.codes) || !Array.isArray(data.log) || !["idle", "running", "queued", "failed"].includes(data.status)) throw new Error("Сервер вернул неполные данные. Повторяем запрос.");
         if (controller.signal.aborted || request !== sequence) return;
         setState(data); setError(null); setNow(Date.now()); setStarting(false);
         pendingForce=false;
@@ -90,19 +94,25 @@ export function CompanyResults({ id }: { id: number }) {
   const refresh = () => { void requestRef.current?.(true); };
   if (!company) return <main className="p-8"><p>Компания не найдена</p><Link href="/">На главную</Link></main>;
   const busy = !error && !offline && (starting || state?.status === "running" || state?.status === "queued");
-  const codes = visiblePromoCodes(state?.codes ?? [], now).filter((code) => matchesPromoQuery(code, query) && (!activeOnly || effectiveStatus(code, now) !== "expired" && (code.startsAt === undefined || code.startsAt <= now)));
+  const available = visiblePromoCodes(state.codes, now);
+  const codes = available.filter((code) => matchesPromoQuery(code, query)
+    && (!officialOnly || effectiveStatus(code, now) === "official")
+    && (!activeOnly || effectiveStatus(code, now) !== "expired" && (code.startsAt === undefined || code.startsAt <= now)));
+  if (sort === "expires") codes.sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
+  if (sort === "minimum") codes.sort((a, b) => (a.minOrder ?? Infinity) - (b.minOrder ?? Infinity));
+  const resetFilters = () => { setQuery(""); setActiveOnly(true); setOfficialOnly(false); setSort("recommended"); };
   const sourceKeys=new Set<string>();
   const sources=state.report?.sourceResults?.filter(source=>{
     const key=source.outcome==='blocked'||source.outcome==='skipped'
       ?[new URL(source.failureUrl??source.url).hostname,source.errorCode,source.httpStatus,source.message].join('|'):source.url;
     if(sourceKeys.has(key))return false;sourceKeys.add(key);return true;
   });
-  return <><SiteHeader back /><main className="content-page">
+  return <><SiteHeader back /><main className="content-page" id="main">
     <header className="store-heading">
       <div className="store-logo"><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
       <div className="min-w-0"><span className="page-eyebrow">Твои следующие находки</span><h1>Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer">Сайт магазина <ArrowUpRight size={12} aria-hidden="true" /></a></div>
     </header>
-    <p className="page-intro">Ищем в открытых источниках. Закрытые сайты пропускаем.</p>
+    <p className="page-intro">Выбирай по условиям, копируй перед заказом, сохраняй на потом.</p>
     <section className="scan-panel" aria-live="polite">
       <div className="scan-top">
         <div className="scan-heading"><span className="scan-symbol"><Radar size={23} aria-hidden="true" /></span><div><p>{state.status === "queued" ? "Поиск начнётся автоматически…" : busy ? state.report?.phase === "sources" ? "Ищем на других сайтах…" : "Проверяем официальный сайт…" : "Поиск выгодных публикаций"}</p><small>{requested ? "Собираем то, что опубликовано в источниках" : "Начнём, когда будешь готов"}</small></div></div>
@@ -111,7 +121,7 @@ export function CompanyResults({ id }: { id: number }) {
       {offline && <p role="status" className="mt-3 text-sm text-muted-foreground">Нет подключения. Поиск доступен после подключения.</p>}
       {error && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
       {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
-      {state?.report && <p className="scan-summary">Найдено: {state.report.couponsFound ?? state.codes.length} · Прочитано страниц: {state.report.pagesRead}.</p>}
+      {state.report && <div className="scan-stats"><div><strong>{available.filter(code => effectiveStatus(code, now) !== "expired" && (code.startsAt === undefined || code.startsAt <= now)).length}</strong><span>без истёкшего срока</span></div><div><strong>{state.report.pagesRead}</strong><span>страниц прочитано</span></div><div><strong>{available.filter(code => effectiveStatus(code, now) === "official").length}</strong><span>официальных кодов</span></div></div>}
       <p className="scan-note">После нажатия «Обновить» — автообновление каждые 5 минут, пока сервер запущен.</p>
       {state && <details className="scan-details"><summary>Подробнее об обновлении</summary>
         <div className="diagnostic-body">
@@ -130,13 +140,16 @@ export function CompanyResults({ id }: { id: number }) {
         </div>
       </details>}
     </section>
+    <div className="results-heading"><h2>Твои находки <span>{codes.length > 0 ? codes.length : ""}</span></h2><label className="sort-field">Порядок<select aria-label="Сортировка промокодов" value={sort} onChange={event => setSort(event.target.value)}><option value="recommended">Сначала официальные</option><option value="expires">Скоро закончатся</option><option value="minimum">Меньше сумма заказа</option></select></label></div>
     <div className="filter-bar">
       <label className="search-field"><Search size={17} aria-hidden="true" /><input aria-label="Поиск по промокодам и условиям" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Код, скидка или условия акции" /></label>
       <label className="filter-check"><input type="checkbox" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} />Без истёкших</label>
+      <label className="filter-check"><input type="checkbox" checked={officialOnly} onChange={event => setOfficialOnly(event.target.checked)} />Официальные</label>
+      {(query || officialOnly || !activeOnly || sort !== "recommended") && <button type="button" className="filter-reset" onClick={resetFilters}>Сбросить фильтры</button>}
     </div>
     {!state && !error ? <p className="py-10 text-center text-muted-foreground">Загружаем результаты…</p>
       : codes.length ? <div className="results-grid">{codes.map((code) => <PromoCard key={code.id} code={code} />)}</div>
-        : <section className="empty-state"><div className="empty-icon"><Search size={27} aria-hidden="true" /></div><h2>{!requested ? "Хорошие находки начинаются здесь" : busy ? "В поисках твоей выгоды" : "Посмотрим ещё раз?"}</h2><p role="status">{!requested ? "Нажмите «Обновить», чтобы найти промокоды." : offline ? "Подключитесь к интернету, чтобы найти новые промокоды." : busy ? "Найденные коды появятся здесь автоматически." : error ? "Не удалось загрузить результаты. Повторяем запрос." : state.status === "failed" ? state.notice : query || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p></section>}
+        : <section className="empty-state"><div className="empty-icon"><Search size={27} aria-hidden="true" /></div><h2>{!requested ? "Хорошие находки начинаются здесь" : busy ? "В поисках твоей выгоды" : query || officialOnly ? "Пока нет совпадений" : "Посмотрим ещё раз?"}</h2><p role="status">{!requested ? "Нажмите «Обновить», чтобы найти промокоды." : offline ? "Подключитесь к интернету, чтобы найти новые промокоды." : busy ? "Найденные коды появятся здесь автоматически." : error ? "Не удалось загрузить результаты. Повторяем запрос." : state.status === "failed" ? state.notice : query || officialOnly || state.codes.length ? "Нет промокодов по выбранным условиям." : "В прочитанных источниках открытые промокоды не найдены."}</p></section>}
     <details className="company-about"><summary>О компании</summary><p>{company.description}</p></details>
   </main><SiteFooter /></>;
 }

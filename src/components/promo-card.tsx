@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState, useRef } from "react";
-import { Copy, Check, ExternalLink, ChevronDown } from "lucide-react";
+import { Copy, Check, ExternalLink, ChevronDown, CalendarDays, ShoppingBag } from "lucide-react";
 import { SavePromoButton } from "./save-promo-button";
 import { effectiveStatus, statusLabels, type PromoCode } from "@/lib/promocodes";
 
@@ -47,6 +47,11 @@ export function PromoCard({ code }: { code: PromoCode }) {
       <span className="promo-discount">{code.discount}</span>
       <span className="promo-description"><span className={expanded ? "" : "line-clamp-2"}>{code.description}</span><ChevronDown aria-hidden="true" size={16} data-expanded={expanded} /></span>
     </button>
+    <div className="promo-facts">
+      {code.minOrder !== undefined && <span><ShoppingBag size={14} aria-hidden="true" />От {new Intl.NumberFormat("ru-RU").format(code.minOrder)} ₽</span>}
+      {code.expiresAt !== undefined && <span><CalendarDays size={14} aria-hidden="true" />До {new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Moscow" }).format(code.expiresAt)}</span>}
+      {code.appOnly && <span>Только в приложении</span>}
+    </div>
     <div className="promo-code-row">
       <div className="promo-code-field"><span>ПРОМОКОД</span><code>{code.code}</code></div>
       <button onClick={copy} disabled={status === "expired"} aria-label={`Скопировать ${code.code}`} className="copy-control" data-copied={copied}>

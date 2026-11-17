@@ -13,6 +13,8 @@ export function watchPageActivity(onResume: () => void, onPause: () => void) {
   document.addEventListener('visibilitychange',update);
   window.addEventListener('online',update);
   window.addEventListener('offline',update);
+  // A page can mount while already offline or hidden, before any browser event.
+  if (!active) onPause();
   return () => {
     document.removeEventListener('visibilitychange',update);
     window.removeEventListener('online',update);
