@@ -84,6 +84,21 @@ export function parseSavedIds(raw: string | null): string[] | null {
   return [...new Set(ids)];
 }
 
+/** A damaged storage event must not erase the last readable list in an open tab. */
+export function recoverSavedPromos(raw: string | null, previous: SavedPromo[]): SavedPromo[] {
+  if (raw === null) return [];
+  if (raw.length > 1_000_000) return previous;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value) || value.length > MAX_SAVED_PROMOS) return previous;
+    // Legacy exports may contain other merchants; keep their original storage key intact.
+    const supported = value.filter(item => !item || typeof item.companyId !== "number" || getCompanyById(item.companyId));
+    const parsed = parseSavedPromos(JSON.stringify(supported));
+    if (parsed.length !== supported.length || supported.some((item, index) => item?.snapshot && !parsed[index]?.snapshot)) return previous;
+    return parsed;
+  } catch { return previous; }
+}
+
 /** Bound the encoded GET URL, including Cyrillic and non-BMP coupon codes. */
 export function savedIdBatches(ids: string[], limit = 2000): string[] {
   const batches: string[] = []; let current = '';

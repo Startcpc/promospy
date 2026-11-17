@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseSavedIds, parseSavedPromos, MAX_SAVED_PROMOS, exportSavedPromos, importSavedPromos } from "../src/lib/saved-promos";
+import { parseSavedIds, parseSavedPromos, recoverSavedPromos, MAX_SAVED_PROMOS, exportSavedPromos, importSavedPromos } from "../src/lib/saved-promos";
+
+test('corrupt storage updates retain the last readable favorites; explicit deletion still works', () => {
+  const previous = [{ id: '54:SAVE10', companyId: 54, code: 'SAVE10', savedAt: 1000 }];
+  for (const raw of ['{', '{}', '[null]', 'x'.repeat(1_000_001), JSON.stringify([...previous, { id: 'broken', companyId: 54 }])]) {
+    assert.equal(recoverSavedPromos(raw, previous), previous);
+  }
+  assert.deepEqual(recoverSavedPromos('[]', previous), []);
+  assert.deepEqual(recoverSavedPromos(null, previous), []);
+  assert.deepEqual(recoverSavedPromos(JSON.stringify([...previous, { id: '201:OLD', companyId: 201 }]), []), previous);
+});
 
 test("saved data preserves Cyrillic case and identity, discards cached statuses and corrupt entries", () => {
   const valid = { id: "54:1раз", companyId: 54, code: "1раз", savedAt: 1000 };

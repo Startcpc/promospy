@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { PromoCode } from "@/lib/promocodes";
-import { MAX_SAVED_PROMOS, parseSavedPromos, importSavedPromos, savedOfferMatches, SAVED_PROMOS_KEY, LEGACY_SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
+import { MAX_SAVED_PROMOS, parseSavedPromos, recoverSavedPromos, importSavedPromos, savedOfferMatches, SAVED_PROMOS_KEY, LEGACY_SAVED_PROMOS_KEY, type SavedPromo } from "@/lib/saved-promos";
 
 const CHANGED_EVENT = "promospy:saved-promos-changed";
 const EMPTY: SavedPromo[] = [];
@@ -14,7 +14,7 @@ function snapshot() {
   if (memoryOnly) return cached;
   try {
     const raw = window.localStorage.getItem(SAVED_PROMOS_KEY) ?? window.localStorage.getItem(LEGACY_SAVED_PROMOS_KEY);
-    if (raw !== cachedRaw) { cachedRaw = raw; cached = parseSavedPromos(raw); }
+    if (raw !== cachedRaw) { cachedRaw = raw; cached = recoverSavedPromos(raw, cached); }
   } catch { /* Reading storage may be disabled; rendering should still work. */ }
   return cached;
 }
