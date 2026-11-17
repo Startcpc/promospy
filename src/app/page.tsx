@@ -3,7 +3,7 @@ import { ArrowRight, ArrowUpRight, Bookmark, Check, Globe2, Leaf, Search, Shield
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroRadar } from "@/components/hero-radar";
-import { ScrollReveal } from "@/components/motion-surface";
+import { ScrollReveal } from "@/components/scroll-reveal";
 import { companies } from "@/lib/companies";
 import { PUBLIC_CATALOGUES } from "@/lib/source-catalog";
 
