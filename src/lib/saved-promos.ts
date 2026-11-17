@@ -54,10 +54,10 @@ export function parseSavedPromos(raw: string | null): SavedPromo[] {
       if (rawOffer && rawOffer.id === item.id && rawOffer.code === item.code && rawOffer.companyId === item.companyId && typeof rawOffer.description === "string") {
         const sources = Array.isArray(rawOffer.sources) ? rawOffer.sources.filter(source => {
           return !!source && validSourceUrl(source.url);
-        }).slice(0,10).map(source => ({ url: source.url, name: new URL(source.url).hostname, seenAt: validTimestamp(source.seenAt) ? source.seenAt : item.savedAt as number })) : [];
+        }).slice(0,100).map(source => ({ url: source.url, name: new URL(source.url).hostname, seenAt: validTimestamp(source.seenAt) ? source.seenAt : item.savedAt as number })) : [];
         snapshot = { id, code: item.code, companyId: item.companyId, found: validTimestamp(rawOffer.found) ? rawOffer.found : item.savedAt, status: rawOffer.status === "expired" || rawOffer.status === "rejected" ? rawOffer.status : "found",
-          description: rawOffer.description.slice(0,400), discount: typeof rawOffer.discount === "string" ? rawOffer.discount.slice(0,100) : "По условиям источника",
-          conditions: Array.isArray(rawOffer.conditions) ? rawOffer.conditions.filter((value): value is string => typeof value === "string").slice(0,20).map(value => value.slice(0,500)) : [], sources,
+          description: rawOffer.description.slice(0,1500), discount: typeof rawOffer.discount === "string" ? rawOffer.discount.slice(0,100) : "По условиям источника",
+          conditions: Array.isArray(rawOffer.conditions) ? rawOffer.conditions.filter((value): value is string => typeof value === "string").slice(0,100).map(value => value.slice(0,1500)) : [], sources,
           expiresAt: validTimestamp(rawOffer.expiresAt) ? rawOffer.expiresAt : undefined,
           startsAt: validTimestamp(rawOffer.startsAt) ? rawOffer.startsAt : undefined,
           invalidSince: validTimestamp(rawOffer.invalidSince) ? rawOffer.invalidSince : undefined,

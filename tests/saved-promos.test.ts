@@ -100,3 +100,14 @@ test('opaque legacy favorite IDs migrate without losing the supported code or it
  assert.equal(saved.id,'54:MiXeD20');assert.equal(saved.code,'MiXeD20');assert.equal(saved.savedAt,100);
  assert.equal(saved.snapshot?.id,saved.id);assert.equal(saved.snapshot?.status,'found');assert.deepEqual(saved.snapshot?.conditions,['От 1000 рублей']);
 });
+
+
+test('saving and transferring an offer retains long descriptions and every supported condition', () => {
+  const description = 'Описание '.repeat(100);
+  const conditions = Array.from({ length: 30 }, (_, i) => `${i}: ${'Условие '.repeat(100)}Важное исключение в конце.`);
+  const offer = { id: '54:LONG10', companyId: 54, code: 'LONG10', description, discount: '10%', conditions, sources: [], found: 100 };
+  const items = parseSavedPromos(JSON.stringify([{ ...offer, savedAt: 100, snapshot: offer }]));
+  assert.equal(items[0].snapshot?.description, description);
+  assert.deepEqual(items[0].snapshot?.conditions, conditions);
+  assert.deepEqual(importSavedPromos(exportSavedPromos(items), []).items[0].snapshot?.conditions, conditions);
+});
