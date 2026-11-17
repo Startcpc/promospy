@@ -57,7 +57,7 @@ test('home makes no scans; native links and favorites work without keys or carts
   assert.equal(await page.getByLabel('Поиск магазинов',{exact:true}).count(),0);
   assert.equal(await page.locator('a[href^="/company/"]').count(),1);
   assert.equal(await page.getByText(/Ozon|Магнит|Wildberries|Burger King/).count(),0);
-  for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+  for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`Overflow at ${width}px`);}
   for(const id of [5,102,201,202,203,204,205,206,207,208,301,302,999]){
    for(const method of ['GET','POST'])assert.equal((await fetch(base+'/api/scan/'+id,{method})).status,404);
   }
