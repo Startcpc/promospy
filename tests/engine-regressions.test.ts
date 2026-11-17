@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getCompanyById } from '../src/lib/promocodes';
 import { parseMerchantPage, readPublicPage } from '../src/lib/web-search';
+import { parsePromoCodesFromHtml } from '../src/lib/promo-parser';
 const company=getCompanyById(54)!,url='https://promokodi.ru/store/vkusvill/';
 const page=(body:string)=>`<h1>Промокоды ВкусВилл</h1>${body}`;
 
@@ -185,4 +186,15 @@ test('distribution contains only the VkusVill catalogue and no legacy database o
  assert.ok(!metadata.scripts.check.includes('test:database'));
  assert.ok(readdirSync(new URL('docs/',root)).includes('server-setup.md'));
  for(const file of readdirSync(new URL('docs/',root)))assert.ok(!/^(?:release-0\.(?:8|10|11|12)\.|audit-|engine-|project-review-|review-|final-review-)/.test(file),file);
+});
+
+test('minimum-order facts cover merchant wording without choosing between conflicting service thresholds', () => {
+  const parse = (title: string, conditions: string[] = []) => parsePromoCodesFromHtml(JSON.stringify([{promoCode:'TERMS20',title,conditions}]),'https://vkusvill.ru/promocodes/',54)[0];
+  for (const title of ['Заказ во ВкусВилле от 1 250 рублей', 'Первый заказ онлайн от 1500 ₽', 'Покупка на сайте на сумму от 2 000 рублей']) {
+    assert.ok(parse(title).minOrder !== undefined, title);
+  }
+  assert.equal(parse('Заказ во ВкусВилле от 1 250 рублей').minOrder,1250);
+  const ambiguous = parse('Заказ от 1000 рублей',['Доставка: заказ от 2000 рублей']);
+  assert.equal(ambiguous.minOrder,undefined);
+  assert.deepEqual(ambiguous.conditions,['Доставка: заказ от 2000 рублей']);
 });

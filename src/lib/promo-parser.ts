@@ -67,6 +67,14 @@ function maximumDiscount(record:RecordValue,terms:string){
   // Keep that prose intact instead of choosing a misleading universal number.
   return limits.length===1?limits[0]:undefined;
 }
+function minimumOrder(record: RecordValue, terms: string) {
+  const explicit = field(record, ["minOrder", "minimumOrder", "min_order"]);
+  if (explicit !== undefined) return parseMoney(explicit);
+  const pattern = /(?:заказ[а-яё]*|покупк[а-яё]*|сумм[а-яё]*)(?:\s+(?:онлайн|на\s+сайте|в\s+приложении|во?\s+ВкусВилле))?(?:\s+на\s+сумму)?\s*(?:от|не\s+менее)\s*(\d[\d\s\u00a0\u202f]*(?:[.,]\d{1,2})?)/gi;
+  const amounts = [...new Set([...terms.matchAll(pattern)].map(match => parseMoney(match[1])).filter(value => value !== undefined))];
+  // Different services can have different thresholds. Keep their prose instead of choosing one.
+  return amounts.length === 1 ? amounts[0] : undefined;
+}
 function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string, now: number, requireMerchant = false, diagnostics?:ParseDiagnostics): PromoCode | undefined {
   if(privateRecord(record))return;
   const company = getCompanyById(companyId);
@@ -113,8 +121,7 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
     : amount && Number(amount) > 0 ? `${amount} ₽`
       : description.match(/\d+\s*%/)?.[0] ?? "По условиям акции";
   const conditionText = [fullTitle, ...terms].join(" ");
-  const minimum = field(record, ["minOrder", "minimumOrder", "min_order"])
-    ?? conditionText.match(/(?:заказ[а-яё]*|покупк[а-яё]*|сумм[а-яё]*)(?:\s+на\s+сумму)?\s*(?:от|не\s+менее)\s*([\d\s\u00a0\u202f]+(?:[.,]\d{1,2})?)/i)?.[1];
+  const minimum = minimumOrder(record, conditionText);
   const rawEnd = field(record, ["expiresAt", "dateEnd", "endDate", "validThrough", "expirationDate"]);
   const rawStart = field(record, ["startsAt", "startDate", "validFrom"]);
   let written: {startsAt?:number;expiresAt?:number};
@@ -140,7 +147,7 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
     regions: Array.isArray(record.regions)?record.regions.filter((value):value is string=>typeof value==="string").slice(0,20).map(value=>cleanText(value).slice(0,200)):undefined,
     categories: Array.isArray(record.eligibleCategories)?record.eligibleCategories.filter((value):value is string=>typeof value==="string").slice(0,20).map(value=>cleanText(value).slice(0,200)):undefined,
     maxDiscount: maximumDiscount(record,conditionText),
-    found: now, conditions, minOrder: minimum ? parseMoney(minimum) : undefined, startsAt, expiresAt,
+    found: now, conditions, minOrder: minimum, startsAt, expiresAt,
   };
 }
 /** Parse complete objects, never a character window containing adjacent offers. */
