@@ -1,0 +1,180 @@
+{
+  "checkedAt": "2026-11-17T18:34:53.028Z",
+  "version": "0.16.0",
+  "base": "http://127.0.0.1:3101",
+  "mocked": false,
+  "visibleOffers": 24,
+  "totalOffers": 49,
+  "pagesRead": 9,
+  "firstCode": "1раз",
+  "clipboard": true,
+  "favoriteReload": true,
+  "favoriteOffline": true,
+  "errors": [],
+  "httpErrors": [],
+  "scans": [
+    {
+      "method": "POST",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://vkusvill.ru/promocodes/",
+      "official": true,
+      "outcome": "codes",
+      "count": 1,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://vkusvill.ru/promocodes/"
+    },
+    {
+      "url": "https://vkusvill.ru",
+      "official": true,
+      "outcome": "index",
+      "count": 0,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://vkusvill.ru"
+    },
+    {
+      "url": "https://vkusvill.ru/offers/",
+      "official": true,
+      "outcome": "unrecognized",
+      "count": 0,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://vkusvill.ru/offers/",
+      "message": "Страница загружена, но промокоды не распознаны"
+    },
+    {
+      "url": "https://vkusvill.ru/offers/lyubimyy-produkt-dlya-novichkov-poluchayte-20-skidki-srazu.html",
+      "official": true,
+      "outcome": "unrecognized",
+      "count": 0,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://vkusvill.ru/offers/lyubimyy-produkt-dlya-novichkov-poluchayte-20-skidki-srazu.html",
+      "message": "Страница загружена, но промокоды не распознаны"
+    },
+    {
+      "url": "https://getcashback.ru/promocodes/vkusvill/",
+      "official": false,
+      "outcome": "codes",
+      "count": 26,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://getcashback.ru/promocodes/vkusvill/"
+    },
+    {
+      "url": "https://promocodex.ru/promocodes/vkusvill/",
+      "official": false,
+      "outcome": "codes",
+      "count": 7,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://promocodex.ru/promocodes/vkusvill/"
+    },
+    {
+      "url": "https://promokodi.ru/store/vkusvill/",
+      "official": false,
+      "outcome": "unrecognized",
+      "count": 0,
+      "httpStatus": 304,
+      "attempts": 1,
+      "finalUrl": "https://promokodi.ru/store/vkusvill/",
+      "message": "Страница загружена, но промокоды не распознаны"
+    },
+    {
+      "url": "https://promokod.com/coupon-store/vkusvill-ru",
+      "official": false,
+      "outcome": "unrecognized",
+      "count": 0,
+      "httpStatus": 304,
+      "attempts": 1,
+      "finalUrl": "https://promokod.com/coupon-store/vkusvill-ru",
+      "message": "Страница загружена, но промокоды не распознаны"
+    },
+    {
+      "url": "https://promokod.pikabu.ru/shops/vkusvill",
+      "official": false,
+      "outcome": "codes",
+      "count": 15,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://promokod.pikabu.ru/shops/vkusvill"
+    }
+  ]
+}

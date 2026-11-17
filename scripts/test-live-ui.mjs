@@ -44,6 +44,7 @@ try {
   await page.getByText('Код скопирован',{exact:true}).waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()),firstCode);
   await card.getByRole('button',{name:`Сохранить ${firstCode}`,exact:true}).click();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({path:path.join(output,'search-desktop.png')});
   for (const width of [320,390,768,1440]) {
     await page.setViewportSize({width,height:1000});
@@ -52,6 +53,8 @@ try {
   }
   const visibleOffers = await page.locator('article').count();
   await page.getByRole('link',{name:'Избранное (1)',exact:true}).click();
+  await page.waitForURL(base+'/saved');
+  await page.getByRole('button',{name:`Условия ${firstCode}`,exact:true}).waitFor();
   await page.reload({waitUntil:'networkidle'});
   await page.getByRole('button',{name:`Условия ${firstCode}`,exact:true}).waitFor();
   await context.setOffline(true);
