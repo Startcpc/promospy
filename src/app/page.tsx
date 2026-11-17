@@ -1,36 +1,40 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Bookmark, Check, Globe2, Heart, Leaf, MousePointer2, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Bookmark, Check, Globe2, Leaf, Search, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroRadar } from "@/components/hero-radar";
-import { MotionSurface, ScrollReveal } from "@/components/motion-surface";
+import { ScrollReveal } from "@/components/motion-surface";
 import { companies } from "@/lib/companies";
+import { PUBLIC_CATALOGUES } from "@/lib/source-catalog";
 
 export default function Home() {
   const company = companies[0];
   return <div className="home-page">
     <SiteHeader />
-    <main className="home-main" id="top">
-      <MotionSurface className="hero-panel">
+    <main className="home-main" id="main">
+      <section className="hero-panel" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <p className="hero-eyebrow"><Leaf size={14} aria-hidden="true" /> Только ВкусВилл <span /> Только то, что нужно</p>
-          <h1 className="hero-title" aria-label="Твой вкус. Твоя выгода."><span className="title-line"><span>Твой вкус.</span></span>{' '}<span className="title-line title-line-accent"><span>Твоя выгода.</span></span></h1>
-          <p className="hero-description">Промокоды любимого магазина — с условиями, сроками и ссылками на публикации. Всё важное для следующего заказа в одном месте.</p>
-          <div className="hero-actions"><Link href="/company/54" className="button button-lime">Промокоды ВкусВилл <ArrowRight className="button-arrow" size={19} aria-hidden="true" /></Link><a href="#how" className="hero-secondary">Как это работает <ArrowUpRight size={16} aria-hidden="true" /></a></div>
-          <p className="hero-fineprint"><span><Check size={13} aria-hidden="true" /> Бесплатно</span><span><Check size={13} aria-hidden="true" /> Без регистрации</span></p>
+          <p className="hero-eyebrow"><span className="eyebrow-dot" /> Маленькая привычка. Приятная экономия.</p>
+          <h1 className="hero-title" id="hero-title">Покупки<br />по вкусу.<br /><span>Скидки — кстати.</span></h1>
+          <p className="hero-description">Собираем промокоды ВкусВилл из открытых источников. Чтобы ты выбирал продукты, а не перебирал десятки вкладок.</p>
+          <div className="hero-actions"><Link href="/company/54" className="button button-primary">Промокоды ВкусВилл <ArrowRight className="button-arrow" size={20} aria-hidden="true" /></Link></div>
+          <p className="hero-fineprint"><span><Check size={15} aria-hidden="true" /> Бесплатно</span><span><Check size={15} aria-hidden="true" /> Без регистрации</span></p>
         </div>
         <HeroRadar logo={company.logo} name={company.name} />
-      </MotionSurface>
-      <div className="trust-strip"><span><Globe2 size={16} aria-hidden="true" /> Открытые источники</span><span><ListIcon /> Условия рядом с кодом</span><span><Bookmark size={16} aria-hidden="true" /> Избранное под рукой</span></div>
+      </section>
+      <div className="trust-strip"><span><Globe2 size={19} aria-hidden="true" /> Источник у каждого кода</span><span><ShieldCheck size={19} aria-hidden="true" /> Условия без мелкого шрифта</span><span><Bookmark size={19} aria-hidden="true" /> Избранное в твоём браузере</span></div>
       <section className="how-section" id="how" aria-labelledby="how-title">
-        <ScrollReveal className="section-heading"><div><span className="eyebrow"><Sparkles size={14} aria-hidden="true" /> Меньше поисков. Больше ясности.</span><h2 id="how-title">От находки до заказа.<br /><span>Три простых шага.</span></h2></div><p>Нажми «Обновить», посмотри условия и сохрани подходящее предложение.</p></ScrollReveal>
+        <ScrollReveal className="section-heading"><div><span className="eyebrow">КАК ЭТО РАБОТАЕТ</span><h2 id="how-title">Меньше поиска.<br /><span>Больше приятных находок.</span></h2></div><p>От первого клика до следующего заказа — всего три шага.</p></ScrollReveal>
         <div className="feature-grid">
-          {[{icon:Search,number:'01',title:'Найди своё',text:'Запусти поиск по кнопке «Обновить». Публикации появятся по мере чтения источников.',label:'Свежий поиск',tone:'mint'},{icon:ShieldCheck,number:'02',title:'Посмотри условия',text:'Первый заказ, минимальная сумма, срок действия. У каждой находки есть ссылка на источник.',label:'Внимание к деталям',tone:'lime'},{icon:Heart,number:'03',title:'Оставь под рукой',text:'Сохраняй коды и условия в избранное. Возвращайся к ним, когда соберёшь корзину.',label:'Твои находки',tone:'pink'}].map(({icon:Icon,number,title,text,label,tone},index)=><ScrollReveal key={number} delay={index*75}><MotionSurface className={`feature-card feature-${tone}`}><div className="feature-top"><span className="feature-icon"><Icon size={23} aria-hidden="true" /></span><span className="step-number">{number}</span></div><h3>{title}</h3><p>{text}</p><span className="feature-label"><MousePointer2 size={12} aria-hidden="true" />{label}</span></MotionSurface></ScrollReveal>)}
+          {[
+            { icon: Search, number: "01", title: "Запусти поиск", text: "Открой страницу магазина и нажми «Обновить». Промокоды появятся по мере чтения источников.", tone: "mint" },
+            { icon: ShieldCheck, number: "02", title: "Выбери по условиям", text: "Сумма заказа, срок и ограничения — рядом с кодом. Оригинальная публикация всегда в один клик.", tone: "lime" },
+            { icon: Bookmark, number: "03", title: "Сохрани на потом", text: "Скопируй код перед заказом или добавь в избранное. Сохранённые условия доступны даже без сети.", tone: "pink" },
+          ].map(({ icon: Icon, number, title, text, tone }, index) => <ScrollReveal key={number} delay={index * 70}><div className={`feature-card feature-${tone}`}><div className="feature-top"><Icon size={26} strokeWidth={1.5} aria-hidden="true" /><span className="step-number">{number}</span></div><h3>{title}</h3><p>{text}</p></div></ScrollReveal>)}
         </div>
       </section>
-      <ScrollReveal><section className="brand-note"><div className="brand-note-icon"><Leaf size={23} aria-hidden="true" /></div><div><h2>Один магазин. Всё внимание — ему.</h2><p>PromoSpy ищет предложения ВкусВилл. Начинаем с официальной страницы и дополняем результат открытыми каталогами.</p></div><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-link">Официальный сайт ВкусВилл <ArrowUpRight size={16} aria-hidden="true" /></a></section></ScrollReveal>
+      <section className="source-section" aria-labelledby="source-title"><div><span className="eyebrow">ПРОЗРАЧНЫЙ ПОИСК</span><h2 id="source-title">Знаешь, откуда выгода.</h2><p>Сначала официальный сайт, затем публичные каталоги. Отмечаем, где опубликован код; применение зависит от условий твоего заказа.</p></div><div className="source-list"><a href="https://vkusvill.ru/promocodes/" target="_blank" rel="noopener noreferrer"><Leaf size={17} aria-hidden="true" /><span>ВкусВилл <small>Официальный источник</small></span><ArrowUpRight size={17} aria-hidden="true" /></a>{PUBLIC_CATALOGUES.map(source => <a key={source.domain} href={source.pages[54][0]} target="_blank" rel="noopener noreferrer"><Globe2 size={17} aria-hidden="true" /><span>{source.name}</span><ArrowUpRight size={17} aria-hidden="true" /></a>)}</div></section>
     </main>
     <SiteFooter />
   </div>;
 }
-function ListIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="m3 7 2 2 4-4M12 7h9M3 15l2 2 4-4M12 15h9" /></svg>;}
