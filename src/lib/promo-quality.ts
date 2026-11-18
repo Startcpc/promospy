@@ -19,8 +19,7 @@ export function foreignMerchantHeading(heading:string,companyId:number){
   const current=companies.find(company=>company.id===companyId);
   const normalized=compact(heading);
   if(current&&[current.name,...merchantAliases[companyId]??[]].some(name=>normalized.includes(compact(name))))return false;
-  // Negative ownership evidence only: these names are never supported merchants,
-  // search seeds or discovery targets. Keep this independent of the product catalogue.
+  if(companies.some(company=>company.id!==companyId && merchantAliases[company.id].some(alias=>normalized.includes(compact(alias)))))return true;
   return /ozon|озон|wildberries|вайлдберриз|яндекс|yandex|магнит|magnit|пят[её]рочка|5ka|перекр[её]сток|perekrestok|лента|lenta|burger\s*king|бургер\s*кинг|tanuki|тануки|крошка\s*картошка|вкусно\s*[-—–]?\s*и\s*точка/i.test(heading);
 }
 export function promoAudience(code:Pick<PromoCode,'description'|'conditions'>){

@@ -229,3 +229,15 @@ test('failed fresh reading cannot display cached offers or the old successful sc
  const view=await searchState(54,true);assert.equal(view.status,'failed');assert.deepEqual(view.codes,[]);assert.equal(view.lastScan,null);assert.equal(view.report,undefined);assert.doesNotMatch(view.notice??'',/Показываем сохранённые/);
  assert.equal((await searchState(54)).codes[0].code,'PRIOR');
 });
+
+test('different shops keep distinct snapshots when the same code is published twice',async()=>{
+ const ids=[401,403];
+ for(const id of ids){
+   const url='https://promokodi.ru/store/'+(id===401?'burger-king':'rostics')+'/';
+   const offer={id:id+':SHARED',companyId:id,code:'SHARED',discount:'10%',description:'Скидка на заказ',status:'found' as const,conditions:[],sources:[{url,name:'promokodi.ru',seenAt:Date.now()}],found:Date.now()};
+   await requestSearch(id,async()=>({...report,codes:[offer],visited:[url]}),true);
+ }
+ for(const id of ids)assert.deepEqual((await settle(id)).codes.map(code=>code.id),[id+':SHARED']);
+ const saved=await savedSearchResults(ids.map(id=>id+':SHARED'));
+ assert.deepEqual(saved.codes.map(code=>code.companyId).sort(),ids);
+});

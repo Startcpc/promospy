@@ -1,13 +1,14 @@
 import { createRequire } from 'node:module';
+import { normalizePromokodList } from './restaurant-catalogue';
 import { sourceHost } from './fetch-policy';
 import { validCouponToken } from './promo-quality';
-import { normalizeMerchantName } from './merchant-aliases';
+import { merchantIdentity } from './merchant-aliases';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
 /** Normalize the observed public GetCashback card into the shared card parser.
  * No popup, referral URL or script is fetched to reveal a code.
  */
-export function catalogueMarkup(html:string,url:string):string {
+export function catalogueMarkup(html:string,url:string,companyId:number):string {
   if(sourceHost(url)==='promokodi.ru'){
     const $=load(html);
     $('.shop-expired-coupon-list .offer,#expired-coupon-list .offer').each((_,element)=>{
@@ -19,12 +20,13 @@ export function catalogueMarkup(html:string,url:string):string {
   }
   if(sourceHost(url)==='promokod.com'){
     const $=load(html);
+    normalizePromokodList($,url,companyId);
     // Observed public copy values live on the outer wrapper; the inner .coupon
     // omits both the complete code and the detailed conditions. Site claims
     // about verification/usage are not PromoSpy checkout evidence.
     $('.coupon-wrap[data-code]').slice(0,200).each((_,element)=>{
       const card=$(element),code=card.attr('data-code')??'',owner=card.attr('data-store-name')??'';
-      if(!validCouponToken(code)||normalizeMerchantName(owner)!=='вкусвилл'||!card.attr('data-title')){card.remove();return;}
+      if(!validCouponToken(code)||merchantIdentity(owner)!==String(companyId)||!card.attr('data-title')){card.remove();return;}
       card.attr('data-coupon','').attr('data-promocode',code);
       card.find('.coupon-meta,.used-mobile,.detail-act,.detail-act-title,.code-btn,.valid .v-short').remove();
     });

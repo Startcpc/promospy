@@ -37,17 +37,17 @@ export async function backupSearchCache(directory, backups, keep = 7) {
     await rename(temporary,destination);
   } finally {await rm(temporary,{force:true});}
   const copies = await Promise.all((await readdir(backups)).filter(name=>/^promospy-search-\d{4}-\d{2}-\d{2}T[\d.-]+Z-[a-f\d-]{36}\.json$/.test(name)).map(async name=>({name,info:await lstat(path.join(backups,name))})));
-  // A VkusVill-only snapshot cannot replace the historical data in a mixed
-  // backup. Rotate validated active backups only; keep legacy/corrupt copies.
+  // Rotate a snapshot only when the new one covers all of its merchants.
   const activeCopies = [];
   for(const copy of copies){
     if(!copy.info.isFile()||path.join(backups,copy.name)===destination)continue;
     try{
-      const data=JSON.parse(await readBounded(path.join(backups,copy.name),MAX_CACHE_BYTES+10000));
-      if(data?.format==='promospy-search-cache'&&data.version===1&&Array.isArray(data.entries)&&data.entries.length===1&&data.entries[0]?.companyId===54){
-        const parsed=parseSearchCache(JSON.stringify(data.entries[0]),54);
-        if(parsed&&parsed.report.codes.length===data.entries[0].report.codes.length)activeCopies.push(copy);
-      }
+      const data=JSON.parse(await readBounded(path.join(backups,copy.name),MAX_CACHE_BYTES*entries.length+10000));
+      if(data?.format==='promospy-search-cache'&&data.version===1&&Array.isArray(data.entries)&&data.entries.length && data.entries.every(entry=>{
+        if(!entries.some(current=>current.companyId===entry?.companyId))return false;
+        const parsed=parseSearchCache(JSON.stringify(entry),entry.companyId);
+        return parsed && parsed.report.codes.length===entry.report.codes.length;
+      }))activeCopies.push(copy);
     }catch{ /* An unreadable or legacy backup is never discarded by rotation. */ }
   }
   const expired = activeCopies.sort((a,b)=>b.info.mtimeMs-a.info.mtimeMs||b.name.localeCompare(a.name)).slice(keep-1);
@@ -69,7 +69,7 @@ export async function restoreSearchCache(backup, directory, move = rename) {
     if (!parsed || parsed.report.codes.length!==entry.report.codes.length) throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
     entries.push(parsed);
   }
-  if(!entries.length)throw new Error('В копии нет результатов ВкусВилл. Текущие данные не изменены.');
+  if(!entries.length)throw new Error('В копии нет результатов поддерживаемых магазинов. Текущие данные не изменены.');
   const target = path.resolve(directory), parent = path.dirname(target);
   await mkdir(parent,{recursive:true});
   let existing;

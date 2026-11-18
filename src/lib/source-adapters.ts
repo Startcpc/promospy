@@ -20,7 +20,7 @@ export const promotionParsers:PromotionParser[]=[
 export function sourceParser(company:Company,url:string,html:string){
   return promotionParsers.find(parser=>parser.companyId===company.id&&parser.hosts.includes(sourceHost(url))&&parser.recognizes(html));
 }
-/** Only observed public VkusVill URLs; never add coupon values. */
+/** Only publicly listed source URLs are seeded here. */
 export const publicSources:SourceAdapter={
   id:'public-promotions',
   officialUrls(company){

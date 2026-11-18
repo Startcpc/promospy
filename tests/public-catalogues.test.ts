@@ -22,11 +22,11 @@ test('catalogue has five independent domains and a concrete public URL for each'
 test('closed sources and paid voucher shops cannot re-enter through discovery',()=>{
   for(const domain of [...EXCLUDED_CATALOGUES.map(source=>source.domain),'biglion.ru','gilmon.ru','dtf.ru','vc.ru'])assert.ok(!SEARCH_DOMAINS.includes(domain));
 });
-test('only VkusVill has public candidates',()=>{
-  assert.deepEqual(companies.map(company=>company.id),[54]);
+test('each supported merchant has dedicated public candidates',()=>{
+  assert.deepEqual(companies.map(company=>company.id),[54,401,402,403,404,405]);
   assert.equal(catalogueUrls(54).length,5);
   for(const id of [5,201,208,999])assert.deepEqual(catalogueUrls(id),[]);
-  for(const source of PUBLIC_CATALOGUES)assert.deepEqual(Object.keys(source.pages),['54']);
+  for(const merchant of companies)assert.ok(catalogueUrls(merchant.id).length >= 2);
 });
 test('table code retains its conditions, source, expiry and unverified status',()=>{
   const [code]=parseMerchantPage(table(row()),url,company,now);

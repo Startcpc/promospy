@@ -15,21 +15,26 @@ import { closeSourceDispatchers } from './fetch-policy';
 export type MerchantSearchState = ScanState & { report?: Omit<SearchReport,'codes'>; notice?: string; serverTime?: number };
 type Job = {id:number;execute:typeof searchMerchant;status:'queued'|'running';report?:SearchReport;controller:AbortController;previousUrls:string[]};
 type Failure={message:string;retry:number;report?:SearchReport;storageError?:boolean};
-type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>;refreshTimer?:ReturnType<typeof setTimeout>};
+type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>;refreshTimers:Map<number, ReturnType<typeof setTimeout>>};
 const runtimeKey=Symbol.for('promospy.search.runtime');
 const globals=globalThis as typeof globalThis & {[runtimeKey]?:Runtime};
-const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),revisions:new Map<number,number>(),active:0,stopping:false,tasks:new Set<Promise<void>>()};
+const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),revisions:new Map<number,number>(),active:0,stopping:false,tasks:new Set<Promise<void>>(),refreshTimers:new Map<number, ReturnType<typeof setTimeout>>()};
 runtime.revisions??=new Map<number,number>();
 globals[runtimeKey]=runtime;
 const {jobs,failures,revisions}=runtime;
-function scheduleRefresh(execute:typeof searchMerchant,delay=SEARCH_REFRESH_INTERVAL_MS){
-  clearTimeout(runtime.refreshTimer);
+function cancelRefresh(id:number) {
+  clearTimeout(runtime.refreshTimers.get(id));
+  runtime.refreshTimers.delete(id);
+}
+function scheduleRefresh(id:number,execute:typeof searchMerchant,delay=SEARCH_REFRESH_INTERVAL_MS) {
+  cancelRefresh(id);
   if(runtime.stopping)return;
-  runtime.refreshTimer=setTimeout(()=>{
-    runtime.refreshTimer=undefined;
-    void requestSearch(54,execute).catch(()=>scheduleRefresh(execute,60_000));
+  const timer=setTimeout(()=>{
+    runtime.refreshTimers.delete(id);
+    void requestSearch(id,execute).catch(()=>scheduleRefresh(id,execute,60_000));
   },Math.max(0,delay));
-  runtime.refreshTimer.unref?.();
+  timer.unref?.();
+  runtime.refreshTimers.set(id,timer);
 }
 const markerPath=(id:number)=>path.join(directory(),String(id)+'.pending');
 async function marker(id:number):Promise<{retry?:number}|null>{
@@ -55,7 +60,7 @@ export async function searchState(id: number, freshOnly = false): Promise<Mercha
     const report=freshOnly&&job?job.report:freshOnly&&failure?failure.report:job?.report??failure?.report??(interrupted&&!failure&&result?{...result.report,phase:undefined}:result?.report);
     const {codes: _codes,...summary} = report ?? {codes:[]};
     return {
-      codes: freshOnly ? job ? job.report?.codes ?? [] : failure ? failure.report?.codes ?? [] : (result?.report.codes ?? []).filter(code=>!code.cached) : job?.report ? resultCodes(job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
+      codes: freshOnly ? job ? job.report?.codes ?? [] : failure ? failure.report?.codes ?? [] : (result?.report.codes ?? []).filter(code=>!code.cached) : job?.report ? resultCodes(id,job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(id,failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
       status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:freshOnly&&(job||failure)?null:result?.at ?? null,
       serverTime:Date.now(),
       nextScan:failure?.retry ?? (result ? result.at + SEARCH_REFRESH_INTERVAL_MS : null),error:null,log:[],
@@ -65,7 +70,7 @@ export async function searchState(id: number, freshOnly = false): Promise<Mercha
   }
   throw new Error('Состояние поиска меняется. Повторите запрос.');
 }
-function resultCodes(report: SearchReport, previous: PromoCode[]) {
+function resultCodes(id: number, report: SearchReport, previous: PromoCode[]) {
   // A failed source cannot erase its last known offers or renew their confirmation.
   const refreshed = new Set((report.parsedUrls ?? report.visited).map(sourceIdentity));
   const retained = previous.flatMap(code => {
@@ -75,7 +80,7 @@ function resultCodes(report: SearchReport, previous: PromoCode[]) {
     return sources.length ? [{...code,sources,cached:true,...(!keepsOfficial && code.status !== 'expired' && code.status !== 'rejected' ? {status:'found' as const,verificationDetails:'Сохранено с предыдущего чтения. Свежая публикация не подтверждена.'} : {})}] : [];
   });
   const byId = new Map(retained.map(code => [code.id,code]));
-  const fresh = report.codes.filter(code => code.companyId === 54).map(code => {
+  const fresh = report.codes.filter(code => code.companyId === id).map(code => {
     code = {...code,cached:false};
     const original=previous.find(old=>old.code===code.code&&!offerConflict(old,code));
     if(original)code={...code,found:Math.min(code.found,original.found)};
@@ -94,7 +99,7 @@ function resultCodes(report: SearchReport, previous: PromoCode[]) {
 }
 async function persist(id: number, report: SearchReport) {
   const previous = await cached(id);
-  const item: CachedSearch = {companyId:id,at:Date.now(),report:{...report,codes:resultCodes(report,previous?.report.codes ?? [])}};
+  const item: CachedSearch = {companyId:id,at:Date.now(),report:{...report,codes:resultCodes(id,report,previous?.report.codes ?? [])}};
   await mkdir(directory(),{recursive:true});
   const destination = path.join(directory(),`${id}.json`), temporary = `${destination}.${randomUUID()}.tmp`;
   const data = JSON.stringify(item);
@@ -130,7 +135,7 @@ function drain() {
         const failure=failures.get(job.id);
         if(!runtime.stopping){if(failure)await writeMarker(job.id,failure.retry);else await rm(markerPath(job.id),{force:true}).catch(()=>{});}
         revisions.set(job.id,(revisions.get(job.id)??0)+1);jobs.delete(job.id);runtime.active--;drain();
-        scheduleRefresh(job.execute,failure?failure.retry-Date.now():SEARCH_REFRESH_INTERVAL_MS);
+        scheduleRefresh(job.id,job.execute,failure?failure.retry-Date.now():SEARCH_REFRESH_INTERVAL_MS);
       }
     })();
     runtime.tasks.add(task);void task.finally(()=>runtime.tasks.delete(task));
@@ -143,9 +148,9 @@ export async function requestSearch(id: number, execute = searchMerchant, force 
   const oldParserCache = state.status !== 'failed' && state.report && (!state.report.sourceResults || state.report.phase !== 'complete' || state.report.engineVersion!==ENGINE_VERSION);
   if(jobs.has(id))return searchState(id);
   if (!force && !oldParserCache && state.nextScan && state.nextScan > Date.now()) {
-    scheduleRefresh(execute,state.nextScan-Date.now());return state;
+    scheduleRefresh(id,execute,state.nextScan-Date.now());return state;
   }
-  clearTimeout(runtime.refreshTimer);runtime.refreshTimer=undefined;
+  cancelRefresh(id);
   failures.delete(id);jobs.set(id,{id,execute,status:'queued',controller:new AbortController(),previousUrls:[...new Set([...state.codes.flatMap(code=>code.sources.map(source=>source.url)),...state.report?.visited??[]])].slice(0,16)});
   revisions.set(id,(revisions.get(id)??0)+1);
   await writeMarker(id);drain();
@@ -173,13 +178,13 @@ export async function searchHealth() {
 /** Called synchronously before Next.js closes the HTTP server. */
 export function checkpointSearches(){
   runtime.stopping=true;
-  clearTimeout(runtime.refreshTimer);runtime.refreshTimer=undefined;
+  for(const id of runtime.refreshTimers.keys())cancelRefresh(id);
   for(const job of jobs.values()){
     if(job.report&&understood(job.report)){
       let temporary:string|undefined;
       try{
         let previous:CachedSearch|null=null;try{previous=parseSearchCache(readFileSync(path.join(directory(),String(job.id)+'.json'),'utf8'),job.id);}catch{}
-        const data=JSON.stringify({companyId:job.id,at:Date.now(),report:{...job.report,codes:resultCodes(job.report,previous?.report.codes??[])}});
+        const data=JSON.stringify({companyId:job.id,at:Date.now(),report:{...job.report,codes:resultCodes(job.id,job.report,previous?.report.codes??[])}});
         if(Buffer.byteLength(data,'utf8')<=MAX_CACHE_BYTES){
           mkdirSync(directory(),{recursive:true});const target=path.join(directory(),String(job.id)+'.json');temporary=target+'.'+randomUUID()+'.tmp';
           writeFileSync(temporary,data,{mode:0o600});renameSync(temporary,target);temporary=undefined;

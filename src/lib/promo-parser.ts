@@ -3,7 +3,7 @@ const require = createRequire(import.meta.url);
 const { load } = require("cheerio") as typeof import("cheerio");
 import { codeKey, getCompanyById, type PromoCode } from "./promocodes";
 import { mergeOffers } from "./offer-identity";
-import { merchantAliases, normalizeMerchantName } from "./merchant-aliases";
+import { merchantAliases, merchantIdentity, normalizeMerchantName } from "./merchant-aliases";
 import { parsePromoDate } from "./promo-date";
 export { parsePromoDate } from "./promo-date";
 import { extractOfficialDates } from "./promo-terms";
@@ -39,8 +39,7 @@ function recordMerchant(record: RecordValue): string | undefined {
     const name=typeof owner==='string'?owner.trim():owner&&typeof owner==='object'?field(owner as RecordValue,['title','name']):undefined;
     if(name)names.push(name);
   }
-  const aliases=(merchantAliases[54]??[]).map(normalizeMerchantName);
-  const identities=new Set(names.map(name=>{const key=normalizeMerchantName(name);return aliases.includes(key)?'54':key;}));
+  const identities=new Set(names.map(merchantIdentity));
   return identities.size>1?'Несогласованный магазин':names[0];
 }
 /** Preserve every word within the existing storage bounds, including late dates. */

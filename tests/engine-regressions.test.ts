@@ -174,11 +174,11 @@ test('ambiguous named-code containers cannot be rescued as generic undated offer
  assert.deepEqual(parseMerchantPage(html,url,company,Date.now(),false,diagnostics),[]);assert.equal(diagnostics.incomplete,true);
 });
 
-test('distribution contains only the VkusVill catalogue and no legacy database or maintenance commands',async()=>{
+test('distribution contains the current catalogue and no legacy database or maintenance commands',async()=>{
  const {existsSync,readFileSync,readdirSync}=await import('node:fs');
  const {companies}=await import('../src/lib/companies');
  const root=new URL('../',import.meta.url);
- assert.deepEqual(companies.map(company=>company.id),[54]);
+ assert.deepEqual(companies.map(company=>company.id),[54,401,402,403,404,405]);
  assert.deepEqual(readdirSync(new URL('public/logos/',root)),['vkusvill-user.png']);
  for(const file of ['db/custom.db','prisma/schema.prisma','prisma/bootstrap.sql','scripts/database-tools.mjs','scripts/backup-db.mjs','scripts/restore-db.mjs','tests/database-tools.test.mjs','Caddyfile'])assert.equal(existsSync(new URL(file,root)),false,file);
  const metadata=JSON.parse(readFileSync(new URL('package.json',root),'utf8'));
