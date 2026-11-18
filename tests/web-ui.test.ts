@@ -43,20 +43,28 @@ test('home makes no scans; native links and favorites work without keys or carts
   await page.goto(base,{waitUntil:'networkidle'});assert.equal(api.length,0);assert.equal(await page.locator('article').count(),0);
   await page.getByRole('button',{name:'Приостановить анимацию',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Включить анимацию',exact:true}).getAttribute('aria-pressed'),'true');
-  assert.equal(await page.locator('.radar-sweep').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
+  assert.equal(await page.locator('.cover-burger').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
   await page.getByRole('button',{name:'Включить анимацию',exact:true}).press('Enter');
-  assert.equal(await page.locator('.radar-sweep').evaluate(el=>getComputedStyle(el).animationPlayState),'running');
+  assert.equal(await page.locator('.cover-burger').evaluate(el=>getComputedStyle(el).animationPlayState),'running');
   const reduced=await browser.newContext({reducedMotion:'reduce'}),reducedPage=await reduced.newPage();
   await reducedPage.goto(base,{waitUntil:'networkidle'});
-  assert.equal(await reducedPage.locator('.radar-sweep').evaluate(el=>getComputedStyle(el).animationName),'none');
+  assert.equal(await reducedPage.locator('.cover-burger').evaluate(el=>getComputedStyle(el).animationName),'none');
   assert.equal(await reducedPage.getByRole('button',{name:'Приостановить анимацию',exact:true}).isVisible(),false);
   assert.equal(await reducedPage.locator('.scroll-reveal').evaluateAll(elements=>elements.every(el=>getComputedStyle(el).opacity==='1')),true);
   await reduced.close();
   assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),'/favicon.svg');
   assert.equal((await fetch(base+'/favicon.svg')).status,200);
-  assert.equal(await page.getByLabel('Поиск магазинов',{exact:true}).count(),0);
-  assert.equal(await page.locator('a[href^="/company/"]').count(),1);
-  assert.equal(await page.getByText(/Ozon|Магнит|Wildberries|Burger King/).count(),0);
+  const storeSearch=page.getByRole('searchbox',{name:'Поиск магазинов'});
+  const shops=page.locator('a[href^="/company/"]');
+  assert.equal(await shops.count(),6);
+  await page.getByRole('button',{name:'Рестораны',exact:true}).click();assert.equal(await shops.count(),3);
+  await storeSearch.fill('бургер');assert.equal(await shops.count(),1);assert.match(await shops.first().innerText(),/Burger King/);
+  await storeSearch.fill('неизвестный');await page.getByRole('heading',{name:'Магазины не найдены'}).waitFor();
+  await page.getByRole('button',{name:'Сбросить фильтры'}).click();assert.equal(await shops.count(),6);
+  for(const [id,name] of [[401,'Burger King'],[402,'Вкусно — и точка'],[403,'ROSTIC’S'],[404,'Пятёрочка'],[405,'Яндекс Еда']] as const) {
+    assert.equal((await fetch(base+'/api/scan/'+id)).status,200);
+    assert.equal(await page.getByRole('link',{name:'Промокоды '+name,exact:true}).getAttribute('href'),'/company/'+id);
+  }
   for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`Overflow at ${width}px`);}
   for(const id of [5,102,201,202,203,204,205,206,207,208,301,302,999]){
    for(const method of ['GET','POST'])assert.equal((await fetch(base+'/api/scan/'+id,{method})).status,404);

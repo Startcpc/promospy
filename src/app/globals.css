@@ -144,3 +144,44 @@ input[type="checkbox"] { accent-color:#24613d; width:18px; height:18px; }
   .motion-toggle { display:none; }
   .button:hover .button-arrow { transform:none; }
 }
+
+/* The food catalogue shares its type and navigation with merchant results. */
+:root { --background:#fbfaf7; --foreground:#282722; --forest:#262721; --lime:#ffc189; --muted-foreground:#64635e; --border:#e2dfd6; }
+.site-header { background:#fbfaf7f5; border-color:var(--border); }
+.brand-mark { border-radius:13px; background:#fd793f; color:#262721; }
+.brand-word>span { color:#ad401c; }
+.site-nav { max-width:1240px; }
+.catalog-main { width:min(100%,1240px); margin:auto; padding:30px 32px 72px; }
+.food-cover { display:grid; grid-template-columns:1.04fr 1fr; overflow:hidden; isolation:isolate; border-radius:28px; background:#ffad71; }
+.cover-copy { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; padding:clamp(30px,4.5vw,70px); }
+.cover-kicker { font-size:.9rem; font-weight:650; margin-bottom:20px; }
+.cover-copy h1 { font-size:clamp(4rem,6.8vw,6.6rem); line-height:.9; font-weight:730; letter-spacing:-.073em; }
+.cover-copy h1 em { font-family:Georgia,"Times New Roman",serif; font-weight:500; font-size:1.05em; letter-spacing:-.072em; }
+.cover-description { max-width:390px; font-size:1rem; line-height:1.55; margin:24px 0; }
+.cover-action { display:inline-flex; align-items:center; gap:10px; background:#262721; color:white; padding:14px 21px; border-radius:100px; font-weight:600; }
+.cover-action:hover { background:#493529; }
+.cover-photos { position:relative; overflow:hidden; min-height:390px; background:#282622; }
+.cover-burger { width:100%; height:100%; position:absolute; inset:0; object-fit:cover; object-position:50% 53%; animation:food-pan 16s ease-in-out infinite alternate; }
+.citrus-frame { position:absolute; bottom:-9%; left:-5%; width:35%; aspect-ratio:1; border:7px solid #ffad71; border-radius:50%; overflow:hidden; transform:rotate(-12deg); animation:citrus-float 8s ease-in-out infinite alternate; }
+.cover-citrus { object-fit:cover; width:100%; height:100%; }
+.cover-photos .motion-toggle { position:absolute; right:16px; bottom:16px; width:42px; height:42px; border-color:#ffffff80; color:white; background:#222b; }
+.cover-photos[data-paused="true"] * { animation-play-state:paused; }
+@keyframes food-pan { from { transform:scale(1); } to { transform:scale(1.055) translateY(-.4%); } }
+@keyframes citrus-float { to { transform:translate(3%,-4%) rotate(-4deg); } }
+.store-catalog { margin-top:52px; scroll-margin-top:18px; }
+.catalog-toolbar { display:flex; justify-content:space-between; gap:16px; align-items:center; }
+.catalog-toolbar h2 { font-size:clamp(1.85rem,3.2vw,2.9rem); line-height:1.1; letter-spacing:-.052em; font-weight:670; }
+.catalog-input { display:flex; gap:10px; align-items:center; border:1px solid #c9c6bc; border-radius:24px; background:white; padding:10px 16px; color:#68645d; }
+.catalog-input input { min-width:0; width:190px; background:transparent; font-size:1rem; color:var(--foreground); }
+.catalog-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:18px 0 20px; }
+.catalog-tabs button { border:1px solid var(--border); border-radius:24px; padding:8px 15px; font-size:.9rem; background:#fff; }
+.catalog-tabs button[aria-pressed="true"] { color:white; background:#292a24; border-color:#292a24; }
+.shop-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.shop-tile { display:flex; align-items:center; gap:14px; border:1px solid var(--border); border-radius:17px; background:#fff; padding:20px 18px; transition:box-shadow .2s,border-color .2s; }
+.shop-tile:hover { box-shadow:0 5px 16px #38220b12; border-color:#ac8b69; }
+.shop-mark { display:grid; place-items:center; flex-shrink:0; width:64px; height:64px; border-radius:17px; font-weight:850; font-size:1.6rem; letter-spacing:-.075em; }
+.shop-mark img { object-fit:contain; }.shop-text { display:grid; gap:4px; }.shop-text strong { font-size:1.09rem; letter-spacing:-.035em; }.shop-text small { font-size:.875rem; color:#64635e; line-height:1.35; }
+.catalog-empty { padding:32px; border:1px dashed #ada99e; border-radius:16px; text-align:center; }.catalog-empty button { display:inline-flex; align-items:center; gap:4px; text-decoration:underline; margin-top:8px; }
+.site-footer { background:#f0eee8; }.footer-inner,.footer-brand { color:#4c4a45; }.scan-panel { background:#f6efe4; border-color:#e5d7c6; }.scan-symbol { color:#ffc189; }.page-eyebrow { color:#874121; }
+@media(max-width:900px) { .shop-grid {grid-template-columns:repeat(2,minmax(0,1fr));} .cover-copy {padding:32px;} }
+@media(max-width:680px) { .catalog-main {padding:18px 16px 46px;} .food-cover {grid-template-columns:1fr; border-radius:22px;} .cover-copy {padding:30px 24px;} .cover-copy h1 {font-size:clamp(3.2rem,11.5vw,4.8rem);} .cover-kicker {margin-bottom:13px;} .cover-description {margin:15px 0;} .cover-photos {min-height:0;height:clamp(170px,48vw,260px);} .cover-burger {object-position:50% 52%;} .citrus-frame {width:25%;left:2%;bottom:-19%;} .catalog-toolbar {align-items:stretch;flex-direction:column;} .catalog-input input {width:100%;} .store-catalog {margin-top:32px;} .shop-grid {grid-template-columns:1fr;} .shop-tile {padding:13px 16px;} .catalog-tabs {gap:5px;} .catalog-tabs button {padding:7px 11px;} }

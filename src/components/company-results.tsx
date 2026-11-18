@@ -109,10 +109,10 @@ export function CompanyResults({ id }: { id: number }) {
   });
   return <><SiteHeader back /><main className="content-page" id="main">
     <header className="store-heading">
-      <div className="store-logo"><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
-      <div className="min-w-0"><span className="page-eyebrow">Твои следующие находки</span><h1>Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer">Сайт магазина <ArrowUpRight size={12} aria-hidden="true" /></a></div>
+      <div className="store-logo shop-mark" style={{backgroundColor:"#"+company.bgColor,color:"#"+company.color}}>{company.logo ? <BrandLogo src={company.logo} name={company.name}/> : <span aria-hidden="true">{company.mark}</span>}</div>
+      <div className="min-w-0"><span className="page-eyebrow">{company.category}</span><h1>Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer">Сайт магазина <ArrowUpRight size={12} aria-hidden="true" /></a></div>
     </header>
-    <p className="page-intro">Выбирай по условиям, копируй перед заказом, сохраняй на потом.</p>
+    <p className="page-intro">Нажми «Обновить», чтобы найти опубликованные коды и посмотреть условия.</p>
     <section className="scan-panel" aria-live="polite">
       <div className="scan-top">
         <div className="scan-heading"><span className="scan-symbol"><Radar size={23} aria-hidden="true" /></span><div><p>{state.status === "queued" ? "Поиск начнётся автоматически…" : busy ? state.report?.phase === "sources" ? "Ищем на других сайтах…" : "Проверяем официальный сайт…" : "Поиск выгодных публикаций"}</p><small>{requested ? "Собираем то, что опубликовано в источниках" : "Начнём, когда будешь готов"}</small></div></div>
