@@ -45,7 +45,7 @@ jobs:
       - if: matrix.node == 22
         run: pnpm build
       - if: matrix.node == 22
-        run: pnpm test:ui
+        run: pnpm test:ui && pnpm test:sites
 
   portable:
     runs-on: ${{ matrix.os }}

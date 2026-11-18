@@ -18,7 +18,8 @@
     "test:launcher": "node scripts/test-launcher.mjs",
     "cache:backup": "node --import ./scripts/register-ts.mjs scripts/search-cache.mjs backup",
     "cache:restore": "node --import ./scripts/register-ts.mjs scripts/search-cache.mjs restore",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:search && pnpm test:launcher && pnpm build && pnpm test:ui",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:search && pnpm test:launcher && pnpm build && pnpm test:ui && pnpm test:sites",
+    "test:sites": "node scripts/build-sites.mjs && node --test tests/hosted-search.test.mjs",
     "test:container": "node scripts/test-container.mjs",
     "package:zip": "node scripts/package-release.mjs",
     "test:live:ui": "node scripts/test-live-ui.mjs"
