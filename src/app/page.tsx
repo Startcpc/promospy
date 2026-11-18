@@ -2,7 +2,7 @@ import { Search } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { StoreCatalog } from "@/components/store-catalog";
-import { CoverPhotos } from "@/components/hero-radar";
+import { CoverPhotos } from "@/components/cover-photos";
 
 export default function Home() {
   return <div className="home-page"><SiteHeader/><main id="main" className="catalog-main">

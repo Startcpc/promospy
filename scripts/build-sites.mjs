@@ -14,10 +14,11 @@ const cssDir=path.join(root,'.next/static/css'),styles=(await readdir(cssDir)).f
 if(!styles.length)throw Error('Сначала выполните pnpm build');
 let css='';
 for(const name of styles)css+=await readFile(path.join(cssDir,name),'utf8');
+const fontClasses = [...css.matchAll(/\.([a-zA-Z_][\w-]*)\{--font-geist-(?:sans|mono):/g)].map(match=>match[1]).join(' ');
 asset('/site.css','text/css;charset=utf-8',css.replaceAll('../media/','/_next/static/media/'));
 for(const name of await readdir(path.join(root,'.next/static/media')))if(name.endsWith('.woff2'))asset('/_next/static/media/'+name,'font/woff2',await readFile(path.join(root,'.next/static/media',name)));
 for(const [url,mime] of Object.entries({'/images/catalog-burger.webp':'image/webp','/images/catalog-produce.webp':'image/webp','/logos/vkusvill-user.png':'image/png','/favicon.svg':'image/svg+xml'}))asset(url,mime,await readFile(path.join(root,'public',url)));
-asset('/index.html','text/html;charset=utf-8','<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PromoSpy · Промокоды на еду</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/site.css"></head><body><div id="app"></div><noscript>Для поиска промокодов включите JavaScript.</noscript><script type="module" src="/client.js"></script></body></html>');
+asset('/index.html','text/html;charset=utf-8','<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PromoSpy · Промокоды на еду</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/site.css"></head><body class="' + fontClasses + ' antialiased"><div id="app"></div><noscript>Для поиска промокодов включите JavaScript.</noscript><script type="module" src="/client.js"></script></body></html>');
 const worker=await build({...common,format:'esm',entryPoints:['sites/worker.js'],plugins:[{name:'worker-inputs',setup(api){
   api.onResolve({filter:/^site-assets$/},()=>({path:'assets',namespace:'embedded'}));
   api.onLoad({filter:/.*/,namespace:'embedded'},()=>({contents:JSON.stringify(assets),loader:'json'}));

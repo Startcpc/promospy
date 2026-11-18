@@ -50,7 +50,7 @@ test('home makes no scans; native links and favorites work without keys or carts
   await reducedPage.goto(base,{waitUntil:'networkidle'});
   assert.equal(await reducedPage.locator('.cover-burger').evaluate(el=>getComputedStyle(el).animationName),'none');
   assert.equal(await reducedPage.getByRole('button',{name:'Приостановить анимацию',exact:true}).isVisible(),false);
-  assert.equal(await reducedPage.locator('.scroll-reveal').evaluateAll(elements=>elements.every(el=>getComputedStyle(el).opacity==='1')),true);
+  assert.equal(await reducedPage.locator('.citrus-frame').evaluate(el=>getComputedStyle(el).animationName),'none');
   await reduced.close();
   assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),'/favicon.svg');
   assert.equal((await fetch(base+'/favicon.svg')).status,200);

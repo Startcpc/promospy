@@ -5,7 +5,9 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 const base = new URL(process.argv[2] ?? 'http://127.0.0.1:3000').origin;
-const output = path.resolve('work/live-ui');
+const id = Number(process.argv[3] ?? 54);
+assert.ok(Number.isSafeInteger(id) && id>0);
+const output = path.resolve(id===54?'work/live-ui':'work/live-ui-'+id);
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({headless:true,...(process.env.PROMO_TEST_CHROMIUM_EXECUTABLE ? {executablePath:process.env.PROMO_TEST_CHROMIUM_EXECUTABLE} : {})});
 try {
@@ -16,7 +18,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => {
     if (response.status() >= 400) httpErrors.push({url:response.url(),status:response.status()});
-    if (new URL(response.url()).pathname === '/api/scan/54') {
+    if (new URL(response.url()).pathname === '/api/scan/'+id) {
       scans.push({method:response.request().method(),status:response.status()});
       void response.json().then(data => {latest=data;}).catch(() => {});
     }
@@ -26,7 +28,7 @@ try {
   await page.setViewportSize({width:390,height:900});
   await page.screenshot({path:path.join(output,'home-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
-  await page.getByRole('link',{name:'Промокоды ВкусВилл',exact:true}).click();
+  await page.locator('a[href="/company/'+id+'"]').click();
   await page.getByText('Нажмите «Обновить», чтобы найти промокоды.',{exact:true}).waitFor();
   assert.equal(scans.length,0,'Opening the app must not start a scan');
   assert.equal(await page.locator('article').count(),0);
@@ -37,7 +39,7 @@ try {
   assert.equal(latest?.status,'idle',latest?.notice);
   assert.ok(latest.report.pagesRead > 0);
   assert.ok(latest.codes.length > 0);
-  assert.ok(latest.codes.every(code => code.companyId === 54 && !code.cached));
+  assert.ok(latest.codes.every(code => code.companyId === id && !code.cached));
   const card = page.locator('article').first();
   const firstCode = (await card.locator('.promo-code-field code').innerText()).trim();
   await card.getByRole('button',{name:`Скопировать ${firstCode}`,exact:true}).click();
