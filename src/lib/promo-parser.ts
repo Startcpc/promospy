@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { load } = require("cheerio") as typeof import("cheerio");
+import { load } from './html-document';
 import { codeKey, getCompanyById, type PromoCode } from "./promocodes";
 import { mergeOffers } from "./offer-identity";
 import { merchantAliases, merchantIdentity, normalizeMerchantName } from "./merchant-aliases";

@@ -5,7 +5,8 @@ import type { LookupFunction } from 'node:net';
 import type { Dispatcher } from 'undici';
 import { validSourceUrl } from './promo-validation';
 const {Agent,EnvHttpProxyAgent} = createRequire(import.meta.url)('undici') as typeof import('undici');
-export const sourceHost = (value: string) => new URL(value).hostname.toLowerCase().replace(/^www\./,'');
+export { sourceHost } from './source-host';
+import { sourceHost } from './source-host';
 export function safeSource(value: string, domains: readonly string[]): boolean {
   try {
     const url = new URL(value);

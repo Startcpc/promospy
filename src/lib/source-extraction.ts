@@ -1,10 +1,9 @@
-import { createRequire } from 'node:module';
+import { load } from './html-document';
 import type { Company } from './companies';
 import { merchantAliases as names, normalizeMerchantName } from './merchant-aliases';
 import { foreignMerchantHeading, explicitCode, validCouponToken } from './promo-quality';
 import { codeKey, type PromoCode } from './promocodes';
 import { parsePromoCodesFromHtml, parsePromoDate, mergePromoCodes, type ParseDiagnostics } from './promo-parser';
-const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 export function matchesMerchant(title: string, company: Company) {
   const value = normalizeMerchantName(title);
   return [company.name,...names[company.id] ?? []].some(name => value.includes(normalizeMerchantName(name)));

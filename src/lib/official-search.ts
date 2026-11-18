@@ -1,8 +1,7 @@
-import { createRequire } from "node:module";
+import { load } from './html-document';
 import { mergePromoCodes, parsePromoCodesFromHtml, parseMoney } from "./promo-parser";
 import { extractOfficialDates } from "./promo-terms";
 import type { PromoCode } from "./promocodes";
-const { load } = createRequire(import.meta.url)("cheerio") as typeof import("cheerio");
 
 export const PUBLIC_OFFICIAL_URLS: Record<number, string> = {
   54: "https://vkusvill.ru/promocodes/",

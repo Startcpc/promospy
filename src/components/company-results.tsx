@@ -23,7 +23,7 @@ function sourceFailureMessage(source:{outcome?:string;httpStatus?:number;errorCo
 }
 
 const emptyState:MerchantSearchState={codes:[],status:'idle',lastScan:null,nextScan:null,error:null,log:[]};
-export function CompanyResults({ id }: { id: number }) {
+export function CompanyResults({ id, hosted = false }: { id: number; hosted?: boolean }) {
   const company = getCompanyById(id);
   const [state, setState] = useState<MerchantSearchState>(emptyState);
   const [requested, setRequested] = useState(false);
@@ -56,7 +56,7 @@ export function CompanyResults({ id }: { id: number }) {
       const request = ++sequence;
       activeRequest?.abort();activeRequest?.dispose();
       if (force) setRefreshing(true);
-      const bounded = browserRequestSignal(controller.signal, 12000);
+      const bounded = browserRequestSignal(controller.signal, hosted && method === "POST" ? 35000 : 12000);
       activeRequest=bounded;
       try {
         const response = await fetch(`/api/scan/${id}?fresh=1${force ? "&refresh=1" : ""}`, {
@@ -90,7 +90,7 @@ export function CompanyResults({ id }: { id: number }) {
     });
     // Opening, prefetching and resuming the page cannot start the first search.
     return () => { stopWatching();controller.abort(); clearTimeout(timer); requestRef.current = null; };
-  }, [company, id]);
+  }, [company, id, hosted]);
   const refresh = () => { void requestRef.current?.(true); };
   if (!company) return <main className="p-8"><p>Компания не найдена</p><Link href="/">На главную</Link></main>;
   const busy = !error && !offline && (starting || state?.status === "running" || state?.status === "queued");
@@ -122,7 +122,7 @@ export function CompanyResults({ id }: { id: number }) {
       {error && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">Повторяем загрузку. Сохранённые предложения остаются на экране.</p>}
       {state.notice && codes.length > 0 && <p role="status" className="mt-3 text-sm text-muted-foreground">{state.notice}</p>}
       {state.report && <div className="scan-stats"><div><strong>{available.filter(code => effectiveStatus(code, now) !== "expired" && (code.startsAt === undefined || code.startsAt <= now)).length}</strong><span>без истёкшего срока</span></div><div><strong>{state.report.pagesRead}</strong><span>страниц прочитано</span></div><div><strong>{available.filter(code => effectiveStatus(code, now) === "official").length}</strong><span>официальных кодов</span></div></div>}
-      <p className="scan-note">После нажатия «Обновить» — автообновление каждые 5 минут, пока сервер запущен.</p>
+      <p className="scan-note">После нажатия «Обновить» — автообновление каждые 5 минут, {hosted ? "пока страница открыта." : "пока сервер запущен."}</p>
       {state && <details className="scan-details"><summary>Подробнее об обновлении</summary>
         <div className="diagnostic-body">
           <p>PromoSpy {APP_VERSION}</p>

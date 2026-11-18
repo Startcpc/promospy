@@ -58,7 +58,7 @@ test('home makes no scans; native links and favorites work without keys or carts
   const shops=page.locator('a[href^="/company/"]');
   assert.equal(await shops.count(),6);
   await page.getByRole('button',{name:'Рестораны',exact:true}).click();assert.equal(await shops.count(),3);
-  await storeSearch.fill('бургер');assert.equal(await shops.count(),1);assert.match(await shops.first().innerText(),/Burger King/);
+  await storeSearch.fill('бургер кинг');assert.equal(await shops.count(),1);assert.match(await shops.first().innerText(),/Burger King/);
   await storeSearch.fill('неизвестный');await page.getByRole('heading',{name:'Магазины не найдены'}).waitFor();
   await page.getByRole('button',{name:'Сбросить фильтры'}).click();assert.equal(await shops.count(),6);
   for(const [id,name] of [[401,'Burger King'],[402,'Вкусно — и точка'],[403,'ROSTIC’S'],[404,'Пятёрочка'],[405,'Яндекс Еда']] as const) {

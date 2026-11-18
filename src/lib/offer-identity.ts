@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 import { codeKey, type PromoCode } from './promocodes';
 import { offerConflict, promoAudience, discoveryConfidence, restrictionList } from './promo-quality';
 import { sourceIdentity } from './promo-validation';
@@ -31,7 +32,7 @@ export function mergeOffers(codes:PromoCode[]):PromoCode[]{
     groups.set(base,group);
   }
   return [...groups].flatMap(([base,offers])=>offers.map(code=>{
-    const id=offers.length>1?base+':'+createHash('sha256').update(identity(code)).digest('hex').slice(0,24):base;
+    const id=offers.length>1?base+':'+bytesToHex(sha256(new TextEncoder().encode(identity(code)))).slice(0,24):base;
     const result={...code,id};return {...result,confidence:discoveryConfidence(result)};
   }));
 }

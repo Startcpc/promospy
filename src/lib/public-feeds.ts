@@ -1,11 +1,10 @@
-import { createRequire } from 'node:module';
+import { load } from './html-document';
 import type { Company } from './companies';
 import type { PromoCode } from './promocodes';
 import { matchesMerchant, extractCouponCards } from './source-extraction';
 import { foreignMerchantHeading } from './promo-quality';
 import { mergeOffers } from './offer-identity';
 import type { ParseDiagnostics } from './promo-parser';
-const {load}=createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 const escape=(value:string)=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 export function parsePublicFeed(text:string,url:string,company:Company,now=Date.now(),diagnostics?:ParseDiagnostics):PromoCode[]{
   let feedTitle='',entries:{title:string;body:string}[]=[];

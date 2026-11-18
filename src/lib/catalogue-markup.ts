@@ -1,9 +1,8 @@
-import { createRequire } from 'node:module';
+import { load } from './html-document';
 import { normalizePromokodList } from './restaurant-catalogue';
-import { sourceHost } from './fetch-policy';
+import { sourceHost } from './source-host';
 import { validCouponToken } from './promo-quality';
 import { merchantIdentity } from './merchant-aliases';
-const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
 /** Normalize the observed public GetCashback card into the shared card parser.
  * No popup, referral URL or script is fetched to reveal a code.
