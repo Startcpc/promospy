@@ -175,3 +175,8 @@ test('Promokod.com public wrappers retain real terms without inheriting checkout
 test('Promokod.com masks and explicit foreign owners cannot enter the merchant result',()=>{
  for(const html of [promokodPage('ABC***'),promokodPage('FOREIGN20','Ozon')])assert.deepEqual(parseMerchantPage(html,'https://promokod.com/coupon-store/vkusvill-ru',company,now),[]);
 });
+
+test('the GetCashback activity widget is never a coupon publication',()=>{
+  const html='<h1>Промокоды Вкусно и точка</h1><div class="user-activity__live"><article><h3>Последние проверки</h3><p>Промокод: LOGONLY</p></article></div>';
+  assert.deepEqual(parseMerchantPage(html,catalogueUrls(402).find(url=>url.includes('getcashback'))!,companies.find(company=>company.id===402)!),[]);
+});

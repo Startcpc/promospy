@@ -34,6 +34,7 @@ export function catalogueMarkup(html:string,url:string,companyId:number):string 
   }
   if(sourceHost(url)!=='getcashback.ru')return html;
   const $=load(html);
+  $('.user-activity__live').remove();
   // This site puts unrelated offers directly after this heading, using the
   // same card classes and no related/similar wrapper.
   const elements=$('body *').toArray();
