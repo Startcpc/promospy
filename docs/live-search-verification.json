@@ -1,10 +1,10 @@
 {
-  "checkedAt": "2026-11-17T18:34:53.028Z",
-  "version": "0.16.0",
-  "base": "http://127.0.0.1:3101",
+  "checkedAt": "2026-11-18T19:25:07.173Z",
+  "version": "0.17.0",
+  "base": "http://127.0.0.1:3197",
   "mocked": false,
-  "visibleOffers": 24,
-  "totalOffers": 49,
+  "visibleOffers": 35,
+  "totalOffers": 65,
   "pagesRead": 9,
   "firstCode": "1раз",
   "clipboard": true,
@@ -15,6 +15,58 @@
   "scans": [
     {
       "method": "POST",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "status": 202
+    },
+    {
+      "method": "GET",
       "status": 202
     },
     {
@@ -133,39 +185,10 @@
       "url": "https://getcashback.ru/promocodes/vkusvill/",
       "official": false,
       "outcome": "codes",
-      "count": 26,
+      "count": 31,
       "httpStatus": 200,
       "attempts": 1,
       "finalUrl": "https://getcashback.ru/promocodes/vkusvill/"
-    },
-    {
-      "url": "https://promocodex.ru/promocodes/vkusvill/",
-      "official": false,
-      "outcome": "codes",
-      "count": 7,
-      "httpStatus": 200,
-      "attempts": 1,
-      "finalUrl": "https://promocodex.ru/promocodes/vkusvill/"
-    },
-    {
-      "url": "https://promokodi.ru/store/vkusvill/",
-      "official": false,
-      "outcome": "unrecognized",
-      "count": 0,
-      "httpStatus": 304,
-      "attempts": 1,
-      "finalUrl": "https://promokodi.ru/store/vkusvill/",
-      "message": "Страница загружена, но промокоды не распознаны"
-    },
-    {
-      "url": "https://promokod.com/coupon-store/vkusvill-ru",
-      "official": false,
-      "outcome": "unrecognized",
-      "count": 0,
-      "httpStatus": 304,
-      "attempts": 1,
-      "finalUrl": "https://promokod.com/coupon-store/vkusvill-ru",
-      "message": "Страница загружена, но промокоды не распознаны"
     },
     {
       "url": "https://promokod.pikabu.ru/shops/vkusvill",
@@ -175,6 +198,34 @@
       "httpStatus": 200,
       "attempts": 1,
       "finalUrl": "https://promokod.pikabu.ru/shops/vkusvill"
+    },
+    {
+      "url": "https://promokodi.ru/store/vkusvill/",
+      "official": false,
+      "outcome": "unrecognized",
+      "count": 0,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://promokodi.ru/store/vkusvill/",
+      "message": "Страница загружена, но промокоды не распознаны"
+    },
+    {
+      "url": "https://promokod.com/coupon-store/vkusvill-ru",
+      "official": false,
+      "outcome": "codes",
+      "count": 11,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://promokod.com/coupon-store/vkusvill-ru"
+    },
+    {
+      "url": "https://promocodex.ru/promocodes/vkusvill/",
+      "official": false,
+      "outcome": "codes",
+      "count": 7,
+      "httpStatus": 200,
+      "attempts": 1,
+      "finalUrl": "https://promocodex.ru/promocodes/vkusvill/"
     }
   ]
 }
