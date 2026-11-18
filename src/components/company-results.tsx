@@ -45,6 +45,7 @@ export function CompanyResults({ id, hosted = false }: { id: number; hosted?: bo
     let timer: ReturnType<typeof setTimeout>;
     let sequence = 0;
     let pendingForce = false;
+    let hostedNext = 0;
     let activeRequest: ReturnType<typeof browserRequestSignal> | undefined;
     const sync = async (method: "GET" | "POST", force = false) => {
       setOffline(navigator.onLine === false);
@@ -53,6 +54,13 @@ export function CompanyResults({ id, hosted = false }: { id: number; hosted?: bo
       setOffline(navigator.onLine === false);
       if(force)pendingForce=true;
       if(!canRequestFromPage())return;
+      // An edge worker may cold-start at any time. Keep the visible search in
+      // this tab and request a fresh reading when its next scan is due.
+      if(hosted && method === "GET" && hostedNext) {
+        const remaining=hostedNext-performance.now();
+        if(remaining>0) { timer=setTimeout(()=>{void sync("POST");},remaining);return; }
+        method="POST";
+      }
       const request = ++sequence;
       activeRequest?.abort();activeRequest?.dispose();
       if (force) setRefreshing(true);
@@ -70,6 +78,7 @@ export function CompanyResults({ id, hosted = false }: { id: number; hosted?: bo
         pendingForce=false;
         const remaining = data.nextScan == null ? null : data.nextScan - (data.serverTime ?? Date.now());
         const dueAt = remaining === null ? null : performance.now()+remaining;
+        if(hosted && dueAt!==null)hostedNext=dueAt;
         const delay = data.status === "running" || data.status === "queued" ? 750 : remaining !== null ? Math.max(1000, Math.min(30000, remaining)) : 30000;
         timer = setTimeout(() => {
           const due = (data.status === "failed" || data.status === "idle") && dueAt !== null && performance.now() >= dueAt;

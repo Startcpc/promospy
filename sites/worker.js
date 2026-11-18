@@ -8,10 +8,11 @@ function asset(path,status=200) {
   const item=assets[path];
   return new Response(Uint8Array.from(atob(item.data),chr=>chr.charCodeAt(0)),{status,headers:{'Content-Type':item.mime,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});
 }
-function cacheKey(origin,id) { return origin+'/_search-cache/v1/'+id; }
-async function cached(origin,id) {
-  const result=await caches.default.match(cacheKey(origin,id));
-  return result?.json();
+// At most one public snapshot per registered shop. An isolate can be evicted.
+const latest = new Map();
+function cached(id) {
+  const state=latest.get(id);
+  return state && state.serverTime+3600000>Date.now() ? state : undefined;
 }
 const idle=()=>({status:'idle',codes:[],report:undefined,lastScan:null,nextScan:null,serverTime:Date.now(),error:null,log:[]});
 
@@ -22,22 +23,22 @@ const worker={async fetch(request) {
     const company=getCompanyById(id);
     if(!company)return json({error:'Магазин не найден'},404);
     if(request.method==='GET') {
-      const old=await cached(url.origin,id);
+      const old=cached(id);
       return json(old?{...old,serverTime:Date.now()}:idle());
     }
     if(request.method!=='POST')return json({error:'Метод не поддерживается'},405);
     if(request.headers.get('Origin') && request.headers.get('Origin')!==url.origin)return json({error:'Недопустимый источник запроса'},403);
-    const old=await cached(url.origin,id);
+    const old=cached(id);
     if(old && old.serverTime+30000>Date.now())return json({...old,serverTime:Date.now()});
     const state=await scan(company);
-    await caches.default.put(cacheKey(url.origin,id),Response.json(state,{headers:{'Cache-Control':'public, max-age=3600'}}));
+    latest.set(id,state);
     return json(state);
   }
   if(request.method!=='GET' && request.method!=='HEAD')return json({error:'Метод не поддерживается'},405);
   if(path==='/api/promocodes/saved') {
     const ids=parseSavedIds(url.searchParams.get('ids'));
     if(!ids)return json({error:'Некорректные идентификаторы'},400);
-    const states=await Promise.all([...new Set(ids.map(id=>Number(id.split(':')[0])))].map(id=>cached(url.origin,id)));
+    const states=[...new Set(ids.map(id=>Number(id.split(':')[0])))].map(cached);
     const codes=states.flatMap(state=>state?.codes??[]).filter(code=>ids.includes(code.id));
     return json({codes,missingIds:ids.filter(id=>!codes.some(code=>code.id===id))});
   }
