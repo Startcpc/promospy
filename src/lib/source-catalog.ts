@@ -15,7 +15,12 @@ export const PUBLIC_CATALOGUES: PublicCatalogue[] = [
     404: ['https://promokodi.ru/store/pyatyorochka/'],
     405: ['https://promokodi.ru/store/yandeks-eda/'],
   }},
-  {name:'GetCashback',domain:'getcashback.ru',pages:{54:['https://getcashback.ru/promocodes/vkusvill/']}},
+  {name:'GetCashback',domain:'getcashback.ru',pages:{
+    54: ['https://getcashback.ru/promocodes/vkusvill/'],
+    401: ['https://getcashback.ru/promocodes/burgerking/'],
+    402: ['https://getcashback.ru/promocodes/mcdonalds/'],
+    403: ['https://getcashback.ru/promocodes/kfc/'],
+  }},
   {name:'Promokod.com',domain:'promokod.com',pages:{54:['https://promokod.com/coupon-store/vkusvill-ru'],
     401: ['https://promokod.com/coupon-store/burger-king'],
     403: ['https://promokod.com/coupon-store/kfc-ru'],
