@@ -138,6 +138,10 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
     }
     await Promise.all(details.slice(0, limit).map(url => visit(url, true, officialSignal)));
     signal.throwIfAborted();
+    report.phase = 'sources';
+    publish();
+    for(const url of publicSources.seedUrls(company))await visit(url,false,signal);
+    signal.throwIfAborted();
     report.phase = 'complete';
     publish();
     return report;

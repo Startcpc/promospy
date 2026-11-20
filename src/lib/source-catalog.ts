@@ -1,7 +1,8 @@
-/** Public merchant URLs from the catalogues’ published sitemaps, checked 2026-11-18. */
+/** Public merchant URLs from the catalogues’ published sitemaps, checked 2026-11-20. */
 export type PublicCatalogue = { name: string; domain: string; pages: Record<number, string[]> };
 export const PUBLIC_CATALOGUES: PublicCatalogue[] = [
   {name:'Пикабу',domain:'promokod.pikabu.ru',pages:{54:['https://promokod.pikabu.ru/shops/vkusvill'],
+    201: ['https://promokod.pikabu.ru/shops/magnit-info'],
     401: ['https://promokod.pikabu.ru/shops/burgerkingrus'],
     402: ['https://promokod.pikabu.ru/shops/vkusnoitochka'],
     403: ['https://promokod.pikabu.ru/shops/kfc'],
@@ -17,6 +18,8 @@ export const PUBLIC_CATALOGUES: PublicCatalogue[] = [
   }},
   {name:'GetCashback',domain:'getcashback.ru',pages:{
     54: ['https://getcashback.ru/promocodes/vkusvill/'],
+    201: ['https://getcashback.ru/promocodes/magnit/'],
+    209: ['https://getcashback.ru/promocodes/delivery.metro/'],
     401: ['https://getcashback.ru/promocodes/burgerking/'],
     402: ['https://getcashback.ru/promocodes/mcdonalds/'],
     403: ['https://getcashback.ru/promocodes/kfc/'],

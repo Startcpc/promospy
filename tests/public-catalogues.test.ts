@@ -26,8 +26,8 @@ test('closed sources and paid voucher shops cannot re-enter through discovery',(
 test('supported stores have isolated source lists',()=>{
   assert.deepEqual(companies.map(company=>company.id),[54,401,402,403,404,405,201,METRO_ID,EDO_ID,FOX_ID,ALLO_ID]);
   assert.equal(catalogueUrls(54).length,5);
-  assert.deepEqual(catalogueDomains(201),[]);
-  for(const id of [5,201,208,METRO_ID,EDO_ID,FOX_ID,ALLO_ID,999])assert.deepEqual(catalogueUrls(id),[]);
+  assert.deepEqual(catalogueDomains(201),['promokod.pikabu.ru','getcashback.ru']);
+  for(const id of [5,208,EDO_ID,FOX_ID,ALLO_ID,999])assert.deepEqual(catalogueUrls(id),[]);
   for(const id of [401,402,403,404,405])assert.ok(catalogueDomains(id).length >= 2);
 });
 test('Magnit official card retains code, threshold, discount and service conditions',()=>{
@@ -55,8 +55,9 @@ test('Magnit search reads its official source without VkusVill catalogue request
   assert.deepEqual(report.codes.map(code=>code.code),['ДОСТАВКА25']);
   assert.equal(report.codes[0].status,'official');
   assert.equal(report.codes[0].minOrder,1000);
-  assert.ok(visited.every(url=>new URL(url).hostname==='promo.magnit.ru'));
-  assert.equal(report.targetSites,1);
+  assert.ok(catalogueUrls(201).every(url=>visited.includes(url)));
+  assert.ok(catalogueUrls(54).every(url=>!visited.includes(url)));
+  assert.equal(report.targetSites,3);
 });
 test('table code retains its conditions, source, expiry and unverified status',()=>{
   const [code]=parseMerchantPage(table(row()),url,company,now);
@@ -209,4 +210,14 @@ test('Promokod.com masks and explicit foreign owners cannot enter the merchant r
 test('the GetCashback activity widget is never a coupon publication',()=>{
   const html='<h1>Промокоды Вкусно и точка</h1><div class="user-activity__live"><article><h3>Последние проверки</h3><p>Промокод: LOGONLY</p></article></div>';
   assert.deepEqual(parseMerchantPage(html,catalogueUrls(402).find(url=>url.includes('getcashback'))!,companies.find(company=>company.id===402)!),[]);
+});
+
+test('METRO falls back to its delivery listing when the official source is restricted',async()=>{
+  const metro=companies.find(store=>store.id===METRO_ID)!;
+  const report=await searchMerchant(metro,AbortSignal.timeout(3000),async url=>{
+    if(url.includes('online.metro-cc.ru'))throw new SourceError('HTTP 403','restricted',url,403);
+    assert.equal(url,'https://getcashback.ru/promocodes/delivery.metro/');
+    return '<h1>Промокоды МЕТРО</h1><article><h3>Скидка 10% на доставку</h3><p>Промокод: METROTEST</p></article>';
+  });
+  assert.equal(report.codes[0]?.code,'METROTEST');assert.equal(report.codes[0]?.status,'found');
 });
