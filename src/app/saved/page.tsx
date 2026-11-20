@@ -92,7 +92,7 @@ export default function SavedPage() {
     {!hydrated ? <p role="status">Загружаем избранное…</p> : items.length === 0 ? <div className="empty-state"><div className="empty-icon"><Heart size={27} aria-hidden="true" /></div>
       <p className="font-semibold">Пока нет сохранённых кодов</p>
       <p className="mt-2 text-sm text-muted-foreground">Нажмите сердечко на карточке промокода, чтобы быстро вернуться к нему перед заказом.</p>
-      <Link href="/company/54" className="button button-primary mt-5">Найти промокоды</Link>
+        <Link href="/" className="button button-primary mt-5">Выбрать магазин</Link>
     </div> : <>
       <div className="filter-bar">
         <label className="search-field"><Search size={17} aria-hidden="true" /><input aria-label="Поиск в избранном" value={query} onChange={event => setQuery(event.target.value)} placeholder="Код или условия" /></label>

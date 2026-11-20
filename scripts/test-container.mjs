@@ -8,11 +8,11 @@ const expectedVersion=JSON.parse(readFileSync(new URL('../package.json',import.m
 const request=(path,options={})=>fetch(new URL(path,base),{...options,signal:AbortSignal.timeout(15000)});
 const health=await request('/api/health');assert.equal(health.status,200);
 const identity=await health.json();assert.equal(identity.status,'ok');assert.equal(identity.version,expectedVersion);
-const home=await request('/');assert.equal(home.status,200);assert.match(await home.text(),/ВкусВилл/);
+const home=await request('/');assert.equal(home.status,200);const html=await home.text();assert.match(html,/ВкусВилл/);assert.match(html,/Магнит/);
 const page=await request('/company/54');assert.equal(page.status,200);
 const html=await page.text();assert.ok(!/<article(?:\s|>)/i.test(html),'Search page must be empty before clicking Refresh');
 assert.ok(!html.includes('Результаты получены:'));assert.ok(!html.includes('promokodus.com'));
-for(const id of [201,999])for(const method of ['GET','POST'])assert.equal((await request('/api/scan/'+id,{method})).status,404);
+for(const id of [999])for(const method of ['GET','POST'])assert.equal((await request('/api/scan/'+id,{method})).status,404);
 assert.equal((await request('/api/scan/54',{method:'POST',headers:{Origin:'https://unrelated.example'}})).status,403);
 console.log(JSON.stringify({version:identity.version,health:'ok',emptyBeforeClick:true,unsupportedMerchants:'404',foreignOrigin:'403'}));
 if(live){

@@ -57,6 +57,25 @@ export async function resolvePublic(hostname: string, signal: AbortSignal, resol
   return records;
 }
 const agents=new Map<string,{agent:Dispatcher;at:number}>();
+/** Opt-in IPv4 DNS transport for networks using synthetic DNS addresses.
+ * The original hostname, public-address validation and pinned TLS connection remain mandatory. */
+export async function resolvePublicDoh(hostname:string,signal:AbortSignal,transport:typeof fetch=fetch):Promise<AddressRecord[]>{
+  signal.throwIfAborted();
+  const target=new URL('https://dns.google/resolve');
+  target.searchParams.set('name',hostname);target.searchParams.set('type','A');
+  target.searchParams.set('edns_client_subnet','0.0.0.0/0');
+  const response=await transport(target,{signal:AbortSignal.any([signal,AbortSignal.timeout(8000)]),redirect:'error',headers:{accept:'application/dns-json'}});
+  if(!response.ok)throw new Error('DNS-over-HTTPS: HTTP '+response.status);
+  const reader=response.body?.getReader();if(!reader)throw new Error('Пустой ответ DNS-over-HTTPS');
+  const chunks:Uint8Array[]=[];let size=0;
+  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>65536)throw new Error('Слишком большой ответ DNS');chunks.push(value);}}
+  finally{await reader.cancel().catch(()=>{});}
+  const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  if(data.Status!==0||data.TC===true||!Array.isArray(data.Answer))throw new Error('DNS-over-HTTPS не вернул полный список адресов');
+  const records:AddressRecord[]=data.Answer.filter((item:{type?:number})=>item.type===1).map((item:{data:string})=>({address:item.data,family:4}));
+  if(!records.length||records.some(record=>typeof record.address!=='string'||isIP(record.address)!==4||!publicAddress(record.address)))throw Object.assign(new Error('Непубличный адрес источника'),{code:'ERR_SOURCE_ADDRESS'});
+  return records;
+}
 let proxy: {key:string;agent:Dispatcher}|undefined;
 export async function sourceDispatcher(url: string, signal: AbortSignal): Promise<Dispatcher> {
   if(routedThroughProxy(url)){
@@ -65,7 +84,9 @@ export async function sourceDispatcher(url: string, signal: AbortSignal): Promis
     return proxy!.agent;
   }
   const hostname=new URL(url).hostname;
-  const records=await resolvePublic(hostname,signal),key=hostname+'|'+records.map(record=>record.address).sort().join(',');
+  const mode=process.env.PROMO_DNS_MODE??'system';
+  if(!['system','google-doh'].includes(mode))throw new Error('Неизвестный PROMO_DNS_MODE');
+  const records=await (mode==='google-doh'?resolvePublicDoh(hostname,signal):resolvePublic(hostname,signal)),key=hostname+'|'+records.map(record=>record.address).sort().join(',');
   const previous=agents.get(key);
   if(previous){previous.at=Date.now();return previous.agent;}
   if(agents.size>=24){

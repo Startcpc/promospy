@@ -1,0 +1,196 @@
+{
+  "startedAt": "2026-11-19T16:10:19.353Z",
+  "base": "http://127.0.0.1:3000",
+  "initial": [
+    {
+      "id": 211,
+      "lastScan": 1795104635158,
+      "nextScan": 1795104935158,
+      "pagesRead": 1,
+      "official": [
+        "N",
+        "HAPPY",
+        "FIRST",
+        "SAM"
+      ],
+      "sources": [
+        {
+          "url": "https://fox-pizza.ru/promotions",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "id": 212,
+      "lastScan": 1795104643789,
+      "nextScan": 1795104943789,
+      "pagesRead": 10,
+      "official": [
+        "ДР20",
+        "СТАРТ1000",
+        "ШЕФ"
+      ],
+      "sources": [
+        {
+          "url": "https://allopizza.su/actions",
+          "httpStatus": 200,
+          "outcome": "index",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/keshbek-25-bonusnymi-ballami",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/keshbek-50-bonusnymi-ballami",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/fantastika",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/skidka-v-den-rozhdeniya",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 1
+        },
+        {
+          "url": "https://allopizza.su/action/skidka-20-na-pervyj-zakaz",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 1
+        },
+        {
+          "url": "https://allopizza.su/action/povtornyj-zakaz-s-podarkom",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/skidka-na-vynos-10",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/detskie-master-klassy-v-allo-picca",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/syrnye-palochki-v-podarok",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "automatic": [
+    {
+      "id": 212,
+      "lastScan": 1795104950661,
+      "nextScan": 1795105250661,
+      "pagesRead": 10,
+      "official": [
+        "СТАРТ1000",
+        "ДР20",
+        "ШЕФ"
+      ],
+      "sources": [
+        {
+          "url": "https://allopizza.su/actions",
+          "httpStatus": 200,
+          "outcome": "index",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/keshbek-25-bonusnymi-ballami",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/fantastika",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/keshbek-50-bonusnymi-ballami",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/skidka-20-na-pervyj-zakaz",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 1
+        },
+        {
+          "url": "https://allopizza.su/action/skidka-v-den-rozhdeniya",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 1
+        },
+        {
+          "url": "https://allopizza.su/action/povtornyj-zakaz-s-podarkom",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/skidka-na-vynos-10",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/detskie-master-klassy-v-allo-picca",
+          "httpStatus": 200,
+          "outcome": "empty",
+          "count": 0
+        },
+        {
+          "url": "https://allopizza.su/action/syrnye-palochki-v-podarok",
+          "httpStatus": 200,
+          "outcome": "codes",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": 211,
+      "lastScan": 1795105008354,
+      "nextScan": 1795105308354,
+      "pagesRead": 1,
+      "official": [
+        "N",
+        "HAPPY",
+        "FIRST",
+        "SAM"
+      ],
+      "sources": [
+        {
+          "url": "https://fox-pizza.ru/promotions",
+          "httpStatus": 304,
+          "outcome": "codes",
+          "count": 5
+        }
+      ]
+    }
+  ],
+  "tabsClosedAt": "2026-11-19T16:10:44.651Z",
+  "completedAt": "2026-11-19T16:16:53.382Z"
+}

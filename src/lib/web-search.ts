@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { publicHttp, SourceError, type FetchReceipt } from './public-http';
-import { SEARCH_DOMAINS, publicSources, sourceParser, officialDomains as merchantDomains } from './source-adapters';
+import { SEARCH_DOMAINS, publicSources, sourceParser, hasFixedOfficialSource, officialDetailUrls, officialDomains as merchantDomains } from './source-adapters';
 import { DiscoveryBudget, discoverSitemaps, discoverIndexes, parseFeedLinks, pageFeeds, type DiscoveryResult } from './discovery';
 import { parsePublicFeed } from './public-feeds';
 import { browserReader, needsRendering } from './browser-reader';
@@ -16,6 +16,7 @@ import { extractCouponCards, extractCouponTables, isChallengePage, isLoginWall, 
 import { foreignMerchantHeading } from './promo-quality';
 import { SourceAvailability } from './source-availability';
 import { catalogueMarkup } from './catalogue-markup';
+import { catalogueDomains } from './source-catalog';
 const { load } = createRequire(import.meta.url)('cheerio') as typeof import('cheerio');
 
 export { SEARCH_DOMAINS } from './source-adapters';
@@ -88,7 +89,7 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
   signal.throwIfAborted();
   const config=searchConfig(),pageLimit=Math.min(50,Math.max(6,options.pageBudget??config.pages));
   const budget=new DiscoveryBudget(Math.min(20,Math.max(3,options.discoveryBudget??config.discoveryRequests)));
-  const initial=officialUrls(company),officialDomains=merchantDomains(company),domains=[...new Set([...officialDomains,...SEARCH_DOMAINS])];
+  const initial=officialUrls(company),officialDomains=merchantDomains(company),searchDomains=catalogueDomains(company.id),domains=[...new Set([...officialDomains,...searchDomains])];
   const availability=availabilityByReader.get(read)??new SourceAvailability();availabilityByReader.set(read,availability);
   const report:SearchReport={engineVersion:ENGINE_VERSION,codes:[],targetSites:domains.length,discoveredSites:0,pagesRead:0,pagesFailed:0,visited:[],warnings:[],issues:[],parsedUrls:[],sourceResults:[],phase:'official',officialPagesRead:0,pagesBlocked:0,pagesSkipped:0,parseFailures:0,discovery:budget.results};
   const attempted=new Map<string,string>(),candidates=new Map<string,string>();
@@ -117,22 +118,25 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
       if(isLoginWall(html))throw new SourceError('Для просмотра кодов требуется вход или подписка','restricted',actualUrl,undefined,undefined,receipt?.attempts);
       fetched=true;report.pagesRead++;report.visited.push(url);if(actualOfficial)report.officialPagesRead!++;
       const diagnostics:ParseDiagnostics={incomplete:false,reasons:[]};
+      let recognizedEmpty = false;
       const parse=()=>{
         const document=load(html);
         if(document('title,h1').toArray().some(element=>foreignMerchantHeading(document(element).text(),company.id)))throw new Error('Страница относится к другому сервису магазина');
-        const adapter=actualOfficial?sourceParser(company,actualUrl,html):undefined;
+        const parserUrl = hasFixedOfficialSource(company.id) ? url : actualUrl;
+        const adapter=actualOfficial?sourceParser(company,parserUrl,html):undefined;
+        recognizedEmpty = adapter?.emptyWhenNoCodes === true;
         return adapter?adapter.parse(html,actualUrl,receipt?.observedAt??Date.now()):parseMerchantPage(html,actualUrl,company,receipt?.observedAt??Date.now(),actualOfficial,diagnostics);
       };
       let codes:PromoCode[];
       try{codes=parse();}catch(error){throw new SourceError(error instanceof Error?error.message:'Изменилась разметка источника','parse',actualUrl,receipt?.status,undefined,receipt?.attempts);}
       if(!codes.length&&diagnostics.incomplete)throw new SourceError(diagnostics.reasons.join('; '),'parse',actualUrl,receipt?.status,undefined,receipt?.attempts);
-      if(!codes.length&&needsRendering(html)&&config.browser){
+      if(!codes.length&&!recognizedEmpty&&needsRendering(html)&&config.browser){
         const result=await browserReader.render(actualUrl,actualOfficial?officialDomains:domains,stageSignal);rendering=result.reason;
         if(result.html){html=result.html;actualUrl=result.finalUrl??actualUrl;codes=parse();}
       }
       if(actualOfficial)codes=codes.map(code=>({...code,status:code.status==='expired'?'expired':'official',checked:receipt?.observedAt??Date.now(),verificationDetails:'Опубликован на официальном сайте. Применение в корзине не проверялось.',evidence:{method:'source',observedAt:receipt?.observedAt??Date.now(),sourceUrl:actualUrl,message:'Официальная публикация'}}));
       const document=load(html),heading=document('title,h1').text(),merchantMatches=matchesMerchant(heading,company);
-      const empty=!foreignMerchantHeading(heading,company.id)&&/промокод|купон|coupon/i.test(heading)&&(actualOfficial||merchantMatches)&&explicitEmpty(merchantContent(html));
+      const empty=recognizedEmpty||!foreignMerchantHeading(heading,company.id)&&/промокод|купон|coupon/i.test(heading)&&(actualOfficial||merchantMatches)&&explicitEmpty(merchantContent(html));
       const isIndex=!codes.length&&!empty&&sourceIdentity(actualUrl)===sourceIdentity(company.website);
       const outcome=codes.length?'codes':empty?'empty':isIndex?'index':'unrecognized';
       report.sourceResults!.push({url,official:actualOfficial,outcome,count:codes.length,...(receipt?{httpStatus:receipt.status,attempts:receipt.attempts,finalUrl:actualUrl}:{}),...(rendering?{rendering}:{}),...(diagnostics.incomplete?{partial:true,message:diagnostics.reasons.join('; ')}:{}),...(outcome==='unrecognized'?{message:'Страница загружена, но промокоды не распознаны'}:{})});
@@ -153,6 +157,21 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
     }
   };
   const officialSignal=AbortSignal.any([signal,AbortSignal.timeout(Math.min(25000,config.timeoutMs/2))]);
+  if (hasFixedOfficialSource(company.id)) {
+    const html = await visit(initial[0], true, officialSignal);
+    const details = html ? officialDetailUrls(company, html) : [];
+    const limit = Math.min(12, pageLimit - 4);
+    const indexResult = report.sourceResults?.[0];
+    if (indexResult && details.length > limit) {
+      indexResult.partial = true;
+      indexResult.message = 'Проверена часть карточек из списка акций';
+    }
+    await Promise.all(details.slice(0, limit).map(url => visit(url, true, officialSignal)));
+    signal.throwIfAborted();
+    report.phase = 'complete';
+    publish();
+    return report;
+  }
   const linked=new Set<string>();
   for(const url of initial){
     if(officialSignal.aborted)break;
@@ -173,7 +192,7 @@ export async function searchMerchant(company:Company,signal:AbortSignal,read: (u
   const direct=[...new Set([...history.filter(url=>!officialDomains.includes(host(url))),...known])];
   let directCursor=0;
   const directJob=Promise.all(Array.from({length:3},async()=>{while(directCursor<direct.length&&!signal.aborted)await visit(direct[directCursor++],false,signal);}));
-  await discoverIndexes(company,SEARCH_DOMAINS,budget,signal,read,urls=>{add(urls);publish();});
+  if(searchDomains.length)await discoverIndexes(company,searchDomains,budget,signal,read,urls=>{add(urls);publish();});
   await directJob;
   const remaining=[...candidates.values()].filter(url=>!attempted.has(sourceIdentity(url))&&!skipped.has(sourceIdentity(url))).slice(0,Math.max(0,pageLimit-attempted.size));
   let cursor=0;

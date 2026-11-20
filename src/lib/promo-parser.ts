@@ -7,7 +7,7 @@ import { merchantAliases, normalizeMerchantName } from "./merchant-aliases";
 import { parsePromoDate } from "./promo-date";
 export { parsePromoDate } from "./promo-date";
 import { extractOfficialDates } from "./promo-terms";
-import { foreignMerchantHeading, explicitCode, validCouponToken } from "./promo-quality";
+import { foreignMerchantHeading, explicitCode, validMerchantCouponToken } from "./promo-quality";
 
 type RecordValue = Record<string, unknown>;
 export type ParseDiagnostics={incomplete:boolean;reasons:string[];rejectedCodes?:string[]};
@@ -39,8 +39,11 @@ function recordMerchant(record: RecordValue): string | undefined {
     const name=typeof owner==='string'?owner.trim():owner&&typeof owner==='object'?field(owner as RecordValue,['title','name']):undefined;
     if(name)names.push(name);
   }
-  const aliases=(merchantAliases[54]??[]).map(normalizeMerchantName);
-  const identities=new Set(names.map(name=>{const key=normalizeMerchantName(name);return aliases.includes(key)?'54':key;}));
+  const identities=new Set(names.map(name=>{
+    const key=normalizeMerchantName(name);
+    const company=Object.entries(merchantAliases).find(([,aliases])=>aliases.some(alias=>normalizeMerchantName(alias)===key));
+    return company?.[0]??key;
+  }));
   return identities.size>1?'Несогласованный магазин':names[0];
 }
 /** Preserve every word within the existing storage bounds, including late dates. */
@@ -94,7 +97,7 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
   const rawCode = codeField ? field(record,[codeField]) : record["@type"] === "Offer" && typeof record.description === "string" ? explicitCode(record.description) : undefined;
   if (!rawCode) return;
   const code = codeKey(rawCode);
-  if (!validCouponToken(code)) return;
+  if (!validMerchantCouponToken(code, companyId)) return;
   const reject=(reason:string)=>{
     if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(code);if(diagnostics.reasons.length<5)diagnostics.reasons.push(reason);}
     return undefined;

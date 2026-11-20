@@ -1,7 +1,7 @@
 import { getCompanyById, type PromoCode } from "./promocodes";
 
 import { validSourceUrl, validTimestamp } from "./promo-validation";
-import { offerConflict, validCouponToken, foreignMerchantHeading } from "./promo-quality";
+import { offerConflict, validMerchantCouponToken, foreignMerchantHeading } from "./promo-quality";
 
 // Read the old list once, but never overwrite it: it is the recoverable archive
 // for favorites of merchants removed from the active product.
@@ -41,7 +41,7 @@ export function parseSavedPromos(raw: string | null): SavedPromo[] {
       if (!entry || typeof entry !== "object") continue;
       const item = entry as Record<string, unknown>;
       if (!validOfferId(item.id) || typeof item.companyId !== "number" || !getCompanyById(item.companyId)
-        || typeof item.code !== "string" || !validCouponToken(item.code)
+        || typeof item.code !== "string" || !validMerchantCouponToken(item.code, item.companyId)
         || !validTimestamp(item.savedAt)) continue;
       const base = `${item.companyId}:${item.code}`;
       // Older database-backed favorites used opaque IDs. Migrate those using

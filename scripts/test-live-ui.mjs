@@ -26,7 +26,7 @@ try {
   await page.setViewportSize({width:390,height:900});
   await page.screenshot({path:path.join(output,'home-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
-  await page.getByRole('link',{name:'Промокоды ВкусВилл',exact:true}).click();
+  await page.locator('a[href="/company/54"]').click();
   await page.getByText('Нажмите «Обновить», чтобы найти промокоды.',{exact:true}).waitFor();
   assert.equal(scans.length,0,'Opening the app must not start a scan');
   assert.equal(await page.locator('article').count(),0);

@@ -69,7 +69,7 @@ export async function restoreSearchCache(backup, directory, move = rename) {
     if (!parsed || parsed.report.codes.length!==entry.report.codes.length) throw new Error('Резервная копия повреждена. Текущие результаты не изменены.');
     entries.push(parsed);
   }
-  if(!entries.length)throw new Error('В копии нет результатов ВкусВилл. Текущие данные не изменены.');
+  if(!entries.length)throw new Error('В копии нет результатов поддерживаемых магазинов. Текущие данные не изменены.');
   const target = path.resolve(directory), parent = path.dirname(target);
   await mkdir(parent,{recursive:true});
   let existing;

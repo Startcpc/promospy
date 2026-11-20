@@ -1,5 +1,5 @@
 import type { PromoCode } from './promocodes';
-import { companies } from './companies';
+import { companies, FOX_ID } from './companies';
 import { merchantAliases } from './merchant-aliases';
 const compact=(text:string)=>text.toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/[^\p{L}\p{N}]/gu,'');
 export function explicitCode(text:string){
@@ -14,6 +14,11 @@ export function explicitCode(text:string){
 }
 export function validCouponToken(value:string){
   return /^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(value)&&!/^[78]\d{10}$/.test(value)&&!/^(?:coupon|promocode|промокод|код|скопировать|copy|code|например|название|ваш|любой|нет|отсутствует|недоступен|скрыт|скоро|none|null|undefined|unavailable|hidden|http|https|true|false)$/i.test(value);
+}
+
+export function validMerchantCouponToken(value: string, companyId: number) {
+  // Fox Pizza publishes single-letter codes in its public promotion cards.
+  return validCouponToken(value) || (companyId === FOX_ID && /^[A-Z]$/.test(value));
 }
 export function foreignMerchantHeading(heading:string,companyId:number){
   const current=companies.find(company=>company.id===companyId);

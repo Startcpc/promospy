@@ -8,8 +8,11 @@ export const PUBLIC_CATALOGUES: PublicCatalogue[] = [
   {name:'Promocodex',domain:'promocodex.ru',pages:{54:['https://promocodex.ru/promocodes/vkusvill/']}},
 ];
 export const SEARCH_DOMAINS = PUBLIC_CATALOGUES.map(source => source.domain);
+export function catalogueDomains(companyId: number) {
+  return PUBLIC_CATALOGUES.filter(source => source.pages[companyId]?.length).map(source => source.domain);
+}
 export function catalogueUrls(companyId: number) {
-  return companyId === 54 ? PUBLIC_CATALOGUES.flatMap(source => source.pages[54]) : [];
+  return PUBLIC_CATALOGUES.flatMap(source => source.pages[companyId] ?? []);
 }
 /** Disabled sources stay out of both direct reading and index discovery. */
 export const EXCLUDED_CATALOGUES = [

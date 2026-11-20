@@ -1,12 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PublicHttpClient, SourceError, retryAfter } from '../src/lib/public-http';
-import { publicAddress, safeSource, pinnedLookup, resolvePublic } from '../src/lib/fetch-policy';
+import { publicAddress, safeSource, pinnedLookup, resolvePublic, resolvePublicDoh } from '../src/lib/fetch-policy';
 import { parseRobots, robotsAllows } from '../src/lib/robots';
 import { RequestQueue } from '../src/lib/request-queue';
 const url='https://example.org/promos',domains=['example.org'];
 const html=()=>new Response('<h1>Public source</h1>',{headers:{'content-type':'text/html'}});
 const options={robots:false};
+test('explicit DoH resolution pins only validated public IPv4 addresses',async()=>{
+  const result=await resolvePublicDoh('example.org',AbortSignal.timeout(2000),async(input,init)=>{
+    const url=new URL(String(input));assert.equal(url.origin,'https://dns.google');assert.equal(url.searchParams.get('name'),'example.org');assert.equal(init?.redirect,'error');
+    return Response.json({Status:0,Answer:[{type:5,data:'alias.example.org'},{type:1,data:'93.184.215.14'}]});
+  });
+  assert.deepEqual(result,[{address:'93.184.215.14',family:4}]);
+  for(const address of ['127.0.0.1','198.18.5.2','10.0.0.1','169.254.169.254','garbage']){
+    await assert.rejects(resolvePublicDoh('example.org',AbortSignal.timeout(2000),async()=>Response.json({Status:0,Answer:[{type:1,data:'93.184.215.14'},{type:1,data:address}]})),/Непубличный/);
+  }
+  for(const body of [{Status:2},{Status:0,TC:true,Answer:[]},{Status:0,Answer:[]}])await assert.rejects(resolvePublicDoh('example.org',AbortSignal.timeout(2000),async()=>Response.json(body)));
+  await assert.rejects(resolvePublicDoh('example.org',AbortSignal.timeout(2000),async()=>new Response('error',{status:503})),/HTTP 503/);
+  await assert.rejects(resolvePublicDoh('example.org',AbortSignal.timeout(2000),async()=>new Response('x'.repeat(65537))),/Слишком большой/);
+  await assert.rejects(resolvePublicDoh('example.org',AbortSignal.abort(),async()=>{throw Error('Must not request');}));
+});
 function client(transport:typeof fetch,extra:ConstructorParameters<typeof PublicHttpClient>[0]={}){
   return new PublicHttpClient({transport,dispatch:async()=>undefined,intervalMs:0,backoffMs:1,timeoutMs:1000,...extra});
 }

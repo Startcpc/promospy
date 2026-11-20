@@ -7,6 +7,8 @@ const fullDate = `(?:\\d{4}-\\d{2}-\\d{2}|\\d{1,2}\\.\\d{1,2}\\.\\d{4}|\\d{1,2}\
 /** Dates must be explicit. A year shared by both ends of a range is source data, not a guess. */
 export function extractOfficialDates(terms: string): { startsAt?: number; expiresAt?: number } {
   let normalized = terms.replace(/\u00a0|\u202f/g, " ");
+  normalized = normalized.replace(/с\s+(\d{1,2}\.\d{1,2}\.\d{4})\s*[-–—]\s*(\d{1,2}\.\d{1,2}\.\d{4})(?!\d)/gi,
+    "с $1 по $2");
   normalized = normalized.replace(/с\s+(\d{1,2}\.\d{1,2})\s+(?:по|до|[–—-])\s+(\d{1,2}\.\d{1,2})\.(\d{4})/gi,
     (_, start, end, year) => `с ${start}.${year} по ${end}.${year}`);
   normalized = normalized.replace(new RegExp(`с\\s+(\\d{1,2})(?:\\s+(${months}))?\\s+(?:по|до|[–—-])\\s+(\\d{1,2})\\s+(${months})\\s+(\\d{4})`, "gi"),
@@ -28,7 +30,7 @@ export function extractOfficialDates(terms: string): { startsAt?: number; expire
     if (new Set(values).size > 1) throw new Error("Неоднозначные сроки официальной акции");
     return values[0];
   };
-  const startsAt = read("с|from|starts?(?:\\s+on)?|valid\\s+from", false);
+  const startsAt = read("с|c|from|starts?(?:\\s+on)?|valid\\s+from", false);
   const expiresAt = read("до|по|until|through|expires?(?:\\s+on)?|valid\\s+(?:until|through)", true);
   // Do not silently turn a visible but unsupported deadline into an unlimited offer.
   for (const match of normalized.matchAll(/(?:^|[\s(,;:])(?:до|по|с)\s+(\d{1,2}(?:[.]|\s+[а-яё]))/gi)) {

@@ -109,7 +109,7 @@ export function CompanyResults({ id }: { id: number }) {
   });
   return <><SiteHeader back /><main className="content-page" id="main">
     <header className="store-heading">
-      <div className="store-logo"><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
+      <div className="store-logo" style={{backgroundColor: `#${company.bgColor}`}}><BrandLogo key={company.logo} src={company.logo} name={company.name} accentColor={company.color} /></div>
       <div className="min-w-0"><span className="page-eyebrow">Твои следующие находки</span><h1>Промокоды {company.name}</h1><a href={company.website} target="_blank" rel="noopener noreferrer">Сайт магазина <ArrowUpRight size={12} aria-hidden="true" /></a></div>
     </header>
     <p className="page-intro">Выбирай по условиям, копируй перед заказом, сохраняй на потом.</p>
