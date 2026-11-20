@@ -9,7 +9,7 @@ test('corrupt storage updates retain the last readable favorites; explicit delet
   }
   assert.deepEqual(recoverSavedPromos('[]', previous), []);
   assert.deepEqual(recoverSavedPromos(null, previous), []);
-  assert.deepEqual(recoverSavedPromos(JSON.stringify([...previous, { id: '201:OLD', companyId: 201 }]), []), previous);
+  assert.deepEqual(recoverSavedPromos(JSON.stringify([...previous, { id: '201:OLD', companyId: 201 }]), previous), previous);
 });
 
 test("saved data preserves Cyrillic case and identity, discards cached statuses and corrupt entries", () => {
@@ -83,12 +83,12 @@ test('favorites import refuses an overflowing merge without silently dropping ei
  assert.throws(()=>importSavedPromos(raw,current),/больше 100/);assert.equal(current.length,100);
 });
 
-test('legacy mixed favorites import only VkusVill and report skipped records',()=>{
+test('legacy mixed favorites include both supported stores',()=>{
  const supported={id:'54:KEEP',companyId:54,code:'KEEP',savedAt:100};
  const foreign={id:'201:OLD',companyId:201,code:'OLD',savedAt:100};
  const raw=JSON.stringify({format:'promospy-favorites',version:1,items:[supported,foreign]});
- assert.deepEqual(parseSavedPromos(JSON.stringify([supported,foreign])),[supported]);
- const result=importSavedPromos(raw,[]);assert.deepEqual(result.items,[supported]);assert.equal(result.added,1);assert.equal(result.skipped,1);
+ assert.deepEqual(parseSavedPromos(JSON.stringify([supported,foreign])),[supported,foreign]);
+ const result=importSavedPromos(raw,[]);assert.deepEqual(result.items,[supported,foreign]);assert.equal(result.added,2);assert.equal(result.skipped,0);
 });
 test('favorites reject mismatched identities and placeholder coupon values',()=>{
  for(const item of [{id:'201:CODE',companyId:54,code:'CODE',savedAt:100},{id:'54:OTHER',companyId:54,code:'CODE',savedAt:100},{id:'54:undefined',companyId:54,code:'undefined',savedAt:100}])assert.deepEqual(parseSavedPromos(JSON.stringify([item])),[]);

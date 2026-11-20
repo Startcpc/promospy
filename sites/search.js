@@ -1,11 +1,14 @@
 import { parseMerchantPage } from '../src/lib/parse-merchant-page';
-import { hasPublicOfficialMarkup, parsePublicOfficial, PUBLIC_OFFICIAL_URLS } from '../src/lib/official-search';
+import { PUBLIC_OFFICIAL_URLS } from '../src/lib/official-search';
 import { catalogueUrls } from '../src/lib/source-catalog';
 import { mergeOffers } from '../src/lib/offer-identity';
 import { parseRobots, robotsAllows } from '../src/lib/robots';
 import { isChallengePage, isLoginWall, explicitEmpty } from '../src/lib/source-extraction';
 
-const headers = { 'User-Agent': 'PromoSpy/0.17 (+https://github.com/Startcpc/promospy)', Accept: 'text/html,text/plain' };
+import { sourceParser, officialDetailUrls } from '../src/lib/source-adapters';
+import { APP_VERSION } from '../src/lib/app-version';
+
+const headers = { 'User-Agent': `PromoSpy/${APP_VERSION} (+https://github.com/Startcpc/promospy)`, Accept: 'text/html,text/plain' };
 
 async function boundedText(response, limit) {
   const reader = response.body?.getReader();
@@ -49,16 +52,19 @@ export async function scan(company) {
   const signal = AbortSignal.timeout(22000);
   // Small batches avoid multiple large DOMs competing for the worker's memory.
   let cursor = 0;
+  const details = [];
   async function readNext() {
     while(cursor<urls.length) {
-      const url=urls[cursor++], isOfficial=url===official;
+      const url=urls[cursor++], isOfficial=url===official || details.includes(url);
       try {
         const html=await fetchPage(url,signal), now=Date.now();
         report.pagesRead++;report.visited.push(url);
         const diagnostic={incomplete:false,reasons:[]};
-        const codes=isOfficial && hasPublicOfficialMarkup(company.id,html) ? parsePublicOfficial(company.id,html,now)
-          : parseMerchantPage(html,url,company,now,isOfficial,diagnostic);
-        const outcome=codes.length?'codes':explicitEmpty(html)?'empty':'inconclusive';
+        const adapter=isOfficial ? sourceParser(company,url,html) : undefined;
+        const codes=adapter ? adapter.parse(html,url,now) : parseMerchantPage(html,url,company,now,isOfficial,diagnostic);
+        const linked=url===official ? officialDetailUrls(company,html) : [];
+        if(linked.length)details.push(...linked.slice(0,12));
+        const outcome=codes.length?'codes':linked.length?'index':adapter?.emptyWhenNoCodes||explicitEmpty(html)?'empty':'unrecognized';
         report.sourceResults.push({url,official:isOfficial,outcome,count:codes.length,...(diagnostic.incomplete?{partial:true}: {})});
         offers.push(...codes);
       } catch(error) {
@@ -68,6 +74,8 @@ export async function scan(company) {
     }
   }
   await Promise.all([readNext(),readNext()]);
+  urls.push(...details);
+  if(details.length)await readNext();
   const codes=mergeOffers(offers).slice(0,100);
   report.officialCoupons=codes.filter(code=>code.status==='official').length;
   const ok=report.sourceResults.some(result=>['codes','empty'].includes(result.outcome));

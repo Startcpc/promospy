@@ -5,6 +5,7 @@ import { getCompanyById } from '../src/lib/promocodes';
 import { isChallengePage, explicitEmpty, extractCouponCards, matchesMerchant } from '../src/lib/source-extraction';
 import { parseMerchantPage, searchMerchant } from '../src/lib/web-search';
 import { parsePublicOfficial } from '../src/lib/official-search';
+import { ALLO_ID, EDO_ID, FOX_ID, METRO_ID } from '../src/lib/companies';
 const company = getCompanyById(54)!;
 const url = 'https://promokodi.ru/store/vkusvill/';
 const page = (content: string) => `<title>Промокоды ВкусВилл</title><h1>Промокоды ВкусВилл</h1>${content}`;
@@ -139,4 +140,70 @@ test('previously available VkusVill coupons stay archived even with a future dat
  const html='<h1>Промокоды ВкусВилл</h1><h2>Купоны на скидку в ВкусВилл доступные ранее:</h2><article data-expires-at="2030-12-31"><h3>Скидка на заказ</h3><p>Промокод: ARCHIVEDVV</p></article>';
  const [code]=parseMerchantPage(html,'https://getcashback.ru/promocodes/vkusvill/',getCompanyById(54)!);
  assert.equal(code.status,'expired');
+});
+test('METRO keeps regional terms and archives an explicitly ended promotion', () => {
+  const page = `<section class="body-section"><h2>Правила применения промокодов</h2>
+    <div class="wp-block-columns"><div class="wp-block-column">
+      <h3>Save10</h3><p>Промокод «Save10» даёт скидку 10% на первый заказ.</p>
+      <p>Минимальная сумма заказа зависит от региона.</p>
+    </div></div>
+    <div class="wp-block-columns"><div class="wp-block-column">
+      <h3>OLD20</h3><p>Акция 20% действует с 01.04.2026-30.04.2026 по промокоду OLD20.</p>
+    </div></div></section>`;
+  const [current, expired] = parsePublicOfficial(METRO_ID, page, Date.parse('2026-11-19T12:00:00+03:00'));
+  assert.equal(current.code, 'Save10');
+  assert.equal(current.discount, '−10%');
+  assert.equal(current.minOrder, undefined);
+  assert.equal(current.conditions[1], 'Минимальная сумма заказа зависит от региона.');
+  assert.equal(expired.status, 'expired');
+  assert.equal(expired.expiresAt, Date.parse('2026-04-30T23:59:59.999+03:00'));
+  assert.throws(() => parsePublicOfficial(METRO_ID, page.replace('«Save10»', '«DIFFERENT»')), /связать код/);
+});
+
+test('ЁДО reads full gift terms from the public offers payload and ignores uncoded promotions', () => {
+  const description = 'Ролл в подарок по промокоду «ROLL25».\n- При заказе от 1 800 ₽\n- Только самовывоз';
+  const page = `<script id="vike_pageContext" type="application/json">${JSON.stringify({
+    urlPathname: '/offers',
+    initialStoreState: {promo: {all: [
+      {name: 'Промокод #ROLL25', description},
+      {name: 'Знакомство с меню', description: 'Бонусы до 10%. Акция не суммируется с другими промокодами.'},
+    ]}},
+  })}</script>`;
+  const codes = parsePublicOfficial(EDO_ID, page);
+  assert.deepEqual(codes.map(code => code.code), ['ROLL25']);
+  assert.equal(codes[0].status, 'official');
+  assert.equal(codes[0].minOrder, 1800);
+  assert.equal(codes[0].discount, 'По условиям акции');
+  assert.deepEqual(codes[0].conditions, description.split('\n'));
+  assert.throws(() => parsePublicOfficial(EDO_ID, page.replace('#ROLL25', '#WRONG')), /связать промокод/);
+});
+
+test('Fox Pizza preserves a published one-letter code and the complete delivery terms', () => {
+  const title = 'Ночная доставка';
+  const terms = 'Введи промокод N к заказу от 1500 ₽. Доставка с 23:00 до 09:00.';
+  const page = `<title>Акции пиццерии Fox Pizza</title><div><img alt="${title}"><h2>${title}</h2><p>${terms}</p></div>`;
+  const [offer] = parsePublicOfficial(FOX_ID, page);
+  assert.equal(offer.code, 'N');
+  assert.equal(offer.minOrder, 1500);
+  assert.deepEqual(offer.conditions, [terms]);
+  assert.equal(offer.status, 'official');
+});
+
+test('Алло Пицца follows official action cards and keeps individual evidence URLs', async () => {
+  const details = 'https://allopizza.su/action/start';
+  const uncoded = 'https://allopizza.su/action/automatic';
+  const page = (title: string, body: string) => `<main><div class="v-action-single__body"><h1>${title}</h1>
+    <div class="v-action-single__description">${body}</div></div></main>`;
+  const index = '<main><h1>Акции ресторана</h1><div class="v-actions"><ul><li class="v-card-flex">' +
+    '<a href="/action/start">Старт</a><a href="/action/automatic">Кешбэк</a><a href="https://elsewhere.test/action/start">Чужой</a></li></ul></div></main>';
+  const visits: string[] = [];
+  const report = await searchMerchant(getCompanyById(ALLO_ID)!, AbortSignal.timeout(3000), async url => {
+    visits.push(url);
+    if (url === details) return page('Скидка 20% на первый заказ', '<p>Вводите код при оплате.</p><p>Введите промокод «TEST20».</p><p>Минимальная сумма корзины для применения промокода — 1300 ₽.</p>');
+    if (url === uncoded) return page('Кешбэк', '<p>Кешбэк начисляется автоматически, промокод не нужен.</p>');
+    return index;
+  });
+  assert.deepEqual(visits, ['https://allopizza.su/actions', details, uncoded]);
+  assert.deepEqual(report.codes.map(code => [code.code, code.minOrder, code.evidence?.sourceUrl]), [['TEST20',1300,details]]);
+  assert.equal(report.sourceResults?.find(result => result.url === uncoded)?.outcome, 'empty');
 });

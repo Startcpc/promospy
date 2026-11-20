@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PUBLIC_CATALOGUES, SEARCH_DOMAINS, catalogueUrls, EXCLUDED_CATALOGUES } from '../src/lib/source-catalog';
-import { companies } from '../src/lib/companies';
+import { PUBLIC_CATALOGUES, SEARCH_DOMAINS, catalogueUrls, catalogueDomains, EXCLUDED_CATALOGUES } from '../src/lib/source-catalog';
+import { parsePublicOfficial } from '../src/lib/official-search';
+import { ALLO_ID, companies, EDO_ID, FOX_ID, METRO_ID } from '../src/lib/companies';
 import { safeSource } from '../src/lib/fetch-policy';
 import { SourceAvailability } from '../src/lib/source-availability';
 import { SourceError } from '../src/lib/public-http';
@@ -22,11 +23,40 @@ test('catalogue has five independent domains and a concrete public URL for each'
 test('closed sources and paid voucher shops cannot re-enter through discovery',()=>{
   for(const domain of [...EXCLUDED_CATALOGUES.map(source=>source.domain),'biglion.ru','gilmon.ru','dtf.ru','vc.ru'])assert.ok(!SEARCH_DOMAINS.includes(domain));
 });
-test('each supported merchant has dedicated public candidates',()=>{
-  assert.deepEqual(companies.map(company=>company.id),[54,401,402,403,404,405]);
+test('supported stores have isolated source lists',()=>{
+  assert.deepEqual(companies.map(company=>company.id),[54,401,402,403,404,405,201,METRO_ID,EDO_ID,FOX_ID,ALLO_ID]);
   assert.equal(catalogueUrls(54).length,5);
-  for(const id of [5,201,208,999])assert.deepEqual(catalogueUrls(id),[]);
-  for(const merchant of companies)assert.ok(catalogueUrls(merchant.id).length >= 2);
+  assert.deepEqual(catalogueDomains(201),[]);
+  for(const id of [5,201,208,METRO_ID,EDO_ID,FOX_ID,ALLO_ID,999])assert.deepEqual(catalogueUrls(id),[]);
+  for(const id of [401,402,403,404,405])assert.ok(catalogueDomains(id).length >= 2);
+});
+test('Magnit official card retains code, threshold, discount and service conditions',()=>{
+  const html=readFileSync(new URL('./fixtures/magnit-official.html',import.meta.url),'utf8');
+  const [offer]=parsePublicOfficial(201,html,now);
+  assert.equal(offer.code,'ДОСТАВКА25');
+  assert.equal(offer.companyId,201);
+  assert.equal(offer.discount,'−25%');
+  assert.equal(offer.minOrder,1000);
+  assert.equal(offer.status,'official');
+  assert.match(offer.conditions.join(' '),/Магнит Экспрессе, Гипере и Косметик/);
+  assert.match(offer.conditions.join(' '),/первый заказ от 1000 ₽/);
+  assert.equal(offer.expiresAt,undefined);
+  assert.ok(validPromo(offer,201));
+  assert.deepEqual(parsePublicOfficial(54,readFileSync(new URL('./fixtures/vkusvill-official.html',import.meta.url),'utf8'),now).every(code=>code.companyId===54),true);
+  assert.throws(()=>parsePublicOfficial(201,html.replace('Скидка на первый заказот 1000₽',''),now),/Неполная карточка/);
+});
+test('Magnit search reads its official source without VkusVill catalogue requests',async()=>{
+  const html=readFileSync(new URL('./fixtures/magnit-official.html',import.meta.url),'utf8');
+  const visited:string[]=[];
+  const report=await searchMerchant(companies.find(item=>item.id===201)!,AbortSignal.timeout(3000),async target=>{
+    visited.push(target);
+    return target==='https://promo.magnit.ru/'?html:'<html><title>Магнит</title></html>';
+  });
+  assert.deepEqual(report.codes.map(code=>code.code),['ДОСТАВКА25']);
+  assert.equal(report.codes[0].status,'official');
+  assert.equal(report.codes[0].minOrder,1000);
+  assert.ok(visited.every(url=>new URL(url).hostname==='promo.magnit.ru'));
+  assert.equal(report.targetSites,1);
 });
 test('table code retains its conditions, source, expiry and unverified status',()=>{
   const [code]=parseMerchantPage(table(row()),url,company,now);

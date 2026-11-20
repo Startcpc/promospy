@@ -2,6 +2,7 @@ import { mkdir, rename, writeFile, readFile, rm } from 'node:fs/promises';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as pause } from 'node:timers/promises';
 import { getCompanyById, type PromoCode, type ScanState } from './promocodes';
 import { searchMerchant, type SearchReport } from './web-search';
 import { sourceIdentity } from './promo-validation';
@@ -12,33 +13,30 @@ import { searchConfig, ENGINE_VERSION, SEARCH_REFRESH_INTERVAL_MS } from './sear
 import { publicHttp } from './public-http';
 import { browserReader } from './browser-reader';
 import { closeSourceDispatchers } from './fetch-policy';
-export type MerchantSearchState = ScanState & { report?: Omit<SearchReport,'codes'>; notice?: string; serverTime?: number };
+export type MerchantSearchState = ScanState & { report?: Omit<SearchReport,'codes'>; notice?: string; serverTime?: number; interrupted?: boolean };
 type Job = {id:number;execute:typeof searchMerchant;status:'queued'|'running';report?:SearchReport;controller:AbortController;previousUrls:string[]};
 type Failure={message:string;retry:number;report?:SearchReport;storageError?:boolean};
-type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>;refreshTimers:Map<number, ReturnType<typeof setTimeout>>};
+type Runtime={jobs:Map<number,Job>;failures:Map<number,Failure>;revisions:Map<number,number>;active:number;stopping:boolean;tasks:Set<Promise<void>>;refreshTimers:Map<number,ReturnType<typeof setTimeout>>};
 const runtimeKey=Symbol.for('promospy.search.runtime');
 const globals=globalThis as typeof globalThis & {[runtimeKey]?:Runtime};
-const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),revisions:new Map<number,number>(),active:0,stopping:false,tasks:new Set<Promise<void>>(),refreshTimers:new Map<number, ReturnType<typeof setTimeout>>()};
+const runtime=globals[runtimeKey]??{jobs:new Map<number,Job>(),failures:new Map<number,Failure>(),revisions:new Map<number,number>(),active:0,stopping:false,tasks:new Set<Promise<void>>(),refreshTimers:new Map<number,ReturnType<typeof setTimeout>>()};
 runtime.revisions??=new Map<number,number>();
+runtime.refreshTimers??=new Map<number,ReturnType<typeof setTimeout>>();
 globals[runtimeKey]=runtime;
 const {jobs,failures,revisions}=runtime;
-function cancelRefresh(id:number) {
+function scheduleRefresh(id:number,execute:typeof searchMerchant,delay=SEARCH_REFRESH_INTERVAL_MS){
   clearTimeout(runtime.refreshTimers.get(id));
-  runtime.refreshTimers.delete(id);
-}
-function scheduleRefresh(id:number,execute:typeof searchMerchant,delay=SEARCH_REFRESH_INTERVAL_MS) {
-  cancelRefresh(id);
   if(runtime.stopping)return;
   const timer=setTimeout(()=>{
     runtime.refreshTimers.delete(id);
     void requestSearch(id,execute).catch(()=>scheduleRefresh(id,execute,60_000));
   },Math.max(0,delay));
-  timer.unref?.();
   runtime.refreshTimers.set(id,timer);
+  timer.unref?.();
 }
 const markerPath=(id:number)=>path.join(directory(),String(id)+'.pending');
 async function marker(id:number):Promise<{retry?:number}|null>{
-  try{const raw=await readFile(markerPath(id),'utf8');if(raw.length>1000)return null;const data=JSON.parse(raw);return data&&typeof data==='object'?{retry:Number.isFinite(data.retry)&&data.retry>Date.now()&&data.retry<Date.now()+86400000?data.retry:undefined}:null;}catch{return null;}
+  try{const raw=await readFile(markerPath(id),'utf8');if(raw.length>1000)return null;const data=JSON.parse(raw);return data&&typeof data==='object'?{retry:Number.isFinite(data.retry)&&data.retry>0&&data.retry<Date.now()+86400000?data.retry:undefined}:null;}catch{return null;}
 }
 async function writeMarker(id:number,retry?:number){
   const target=markerPath(id),temporary=target+'.'+randomUUID()+'.tmp';
@@ -62,6 +60,7 @@ export async function searchState(id: number, freshOnly = false): Promise<Mercha
     return {
       codes: freshOnly ? job ? job.report?.codes ?? [] : failure ? failure.report?.codes ?? [] : (result?.report.codes ?? []).filter(code=>!code.cached) : job?.report ? resultCodes(id,job.report,result?.report.codes ?? []) : job ? result?.report.codes ?? [] : failure?.storageError && failure.report ? resultCodes(id,failure.report,result?.report.codes ?? []) : result?.report.codes ?? [],
       status: job?.status ?? (failure ? 'failed' : 'idle'),lastScan:freshOnly&&(job||failure)?null:result?.at ?? null,
+      ...(!job && !failure && interrupted ? {interrupted: true} : {}),
       serverTime:Date.now(),
       nextScan:failure?.retry ?? (result ? result.at + SEARCH_REFRESH_INTERVAL_MS : null),error:null,log:[],
       ...(report ? {report:summary as Omit<SearchReport,'codes'>} : {}),
@@ -73,7 +72,7 @@ export async function searchState(id: number, freshOnly = false): Promise<Mercha
 function resultCodes(id: number, report: SearchReport, previous: PromoCode[]) {
   // A failed source cannot erase its last known offers or renew their confirmation.
   const refreshed = new Set((report.parsedUrls ?? report.visited).map(sourceIdentity));
-  const retained = previous.flatMap(code => {
+  const retained = previous.filter(code => code.companyId === id).flatMap(code => {
     const sources = code.sources.filter(source => !refreshed.has(sourceIdentity(source.url)));
     const officialSource = code.evidence?.sourceUrl;
     const keepsOfficial = code.status === 'official' && officialSource && sources.some(source => sourceIdentity(source.url) === sourceIdentity(officialSource));
@@ -104,7 +103,18 @@ async function persist(id: number, report: SearchReport) {
   const destination = path.join(directory(),`${id}.json`), temporary = `${destination}.${randomUUID()}.tmp`;
   const data = JSON.stringify(item);
   if (Buffer.byteLength(data,'utf8') > MAX_CACHE_BYTES) throw new Error('Результат превышает размер кеша');
-  try { await writeFile(temporary,data,{mode:0o600}); await rename(temporary,destination); }
+  try {
+    await writeFile(temporary,data,{mode:0o600});
+    // Windows can briefly lock the destination while a concurrent status read closes it.
+    // Keep the old cache intact and retry the atomic replacement, never unlink it.
+    for(let attempt=0;;attempt++){
+      try{await rename(temporary,destination);break;}
+      catch(error){
+        if(process.platform!=='win32'||attempt>=5||!['EPERM','EACCES','EBUSY'].includes((error as NodeJS.ErrnoException).code??''))throw error;
+        await pause(20*(attempt+1));
+      }
+    }
+  }
   finally { await rm(temporary,{force:true}); }
 }
 function understood(report: SearchReport) {
@@ -150,7 +160,7 @@ export async function requestSearch(id: number, execute = searchMerchant, force 
   if (!force && !oldParserCache && state.nextScan && state.nextScan > Date.now()) {
     scheduleRefresh(id,execute,state.nextScan-Date.now());return state;
   }
-  cancelRefresh(id);
+  clearTimeout(runtime.refreshTimers.get(id));runtime.refreshTimers.delete(id);
   failures.delete(id);jobs.set(id,{id,execute,status:'queued',controller:new AbortController(),previousUrls:[...new Set([...state.codes.flatMap(code=>code.sources.map(source=>source.url)),...state.report?.visited??[]])].slice(0,16)});
   revisions.set(id,(revisions.get(id)??0)+1);
   await writeMarker(id);drain();
@@ -178,7 +188,8 @@ export async function searchHealth() {
 /** Called synchronously before Next.js closes the HTTP server. */
 export function checkpointSearches(){
   runtime.stopping=true;
-  for(const id of runtime.refreshTimers.keys())cancelRefresh(id);
+  for(const timer of runtime.refreshTimers.values())clearTimeout(timer);
+  runtime.refreshTimers.clear();
   for(const job of jobs.values()){
     if(job.report&&understood(job.report)){
       let temporary:string|undefined;

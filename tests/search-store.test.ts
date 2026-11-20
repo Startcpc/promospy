@@ -32,12 +32,22 @@ test('manual refresh bypasses the automatic cache interval',async()=>{
  await requestSearch(54,async()=>{calls++;return report;},true);await settle(54);assert.equal(calls,2);
 });
 test('unsupported merchant searches cannot queue work or read historical state',async()=>{
- for(const id of [5,201,302,999]){
+ for(const id of [5,302,999]){
   let called=false;
   await assert.rejects(requestSearch(id,async()=>{called=true;return report;}),/Магазин не найден/);
   await assert.rejects(searchState(id),/Магазин не найден/);
   assert.equal(called,false);
  }
+});
+test('stores keep independent results and refresh state',async()=>{
+ const magnit={id:'201:ДОСТАВКА25',companyId:201,code:'ДОСТАВКА25',description:'Скидка на первый заказ',discount:'−25%',conditions:['Заказ от 1000 ₽'],sources:[{url:'https://promo.magnit.ru/',name:'promo.magnit.ru',seenAt:Date.now()}],found:Date.now(),status:'official' as const,minOrder:1000};
+ const magnitReport={...report,codes:[magnit],visited:['https://promo.magnit.ru/'],sourceResults:[{url:'https://promo.magnit.ru/',official:true,outcome:'codes' as const,count:1}]};
+ await requestSearch(201,async()=>magnitReport,true);await settle(201);
+ assert.deepEqual((await searchState(201)).codes.map(code=>code.code),['ДОСТАВКА25']);
+ assert.deepEqual((await searchState(54)).codes,[]);
+ await requestSearch(54,async()=>report,true);await settle(54);
+ assert.deepEqual((await searchState(201)).codes.map(code=>code.code),['ДОСТАВКА25']);
+ rmSync(path.join(dir,'201.json'),{force:true});
 });
 test('partial progress is visible before the search finishes',async()=>{
  let finish!:()=>void;const gate=new Promise<void>(resolve=>{finish=resolve;});

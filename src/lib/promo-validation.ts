@@ -1,6 +1,6 @@
 import { PROMO_STATUSES, type PromoCode } from './promocodes';
 import type { SearchReport } from './web-search';
-import { validCouponToken, foreignMerchantHeading } from './promo-quality';
+import { validMerchantCouponToken, foreignMerchantHeading } from './promo-quality';
 const record = (value: unknown): value is Record<string,unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 export const validTimestamp = (value: unknown): value is number => finite(value) && value <= 8_640_000_000_000_000;
@@ -11,7 +11,7 @@ export function validSourceUrl(value: unknown): value is string {
 }
 /** Disk caches may have been interrupted, edited, or written by an older build. */
 export function validPromo(value: unknown, companyId: number): value is PromoCode {
-  if (!record(value) || value.companyId !== companyId || typeof value.code !== 'string' || !validCouponToken(value.code)
+  if (!record(value) || value.companyId !== companyId || typeof value.code !== 'string' || !validMerchantCouponToken(value.code, companyId)
     || !(value.id === `${companyId}:${value.code}` || typeof value.id === "string" && value.id.startsWith(`${companyId}:${value.code}:`) && /^[a-f0-9]{24}$/.test(value.id.slice(`${companyId}:${value.code}:`.length))) || typeof value.description !== 'string' || value.description.length > 1500
     || typeof value.discount !== 'string' || value.discount.length > 100 || !PROMO_STATUSES.includes(value.status as PromoCode['status'])
     || !validTimestamp(value.found) || !strings(value.conditions,100,1500) || !Array.isArray(value.sources) || value.sources.length > 100) return false;

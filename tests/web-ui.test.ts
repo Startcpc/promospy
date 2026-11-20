@@ -1,13 +1,14 @@
 import { ENGINE_VERSION } from "../src/lib/search-config";
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { chromium, type Page } from 'playwright';
 import { parseMerchantPage } from '../src/lib/web-search';
 import { getCompanyById } from '../src/lib/promocodes';
+import { parsePublicOfficial } from '../src/lib/official-search';
 const networkPreload=new URL('./helpers/official-network.mjs',import.meta.url).href;
 async function startSearch(page:Page){
  await page.getByText('Нажмите «Обновить», чтобы найти промокоды.',{exact:true}).waitFor();
@@ -21,6 +22,18 @@ test('home makes no scans; native links and favorites work without keys or carts
  const code=parseMerchantPage('<title>ВкусВилл</title><article><h3>Первый заказ</h3><p>Промокод: SAVE10</p></article>','https://promokodi.ru/store/vkusvill',getCompanyById(54)!)[0];
  code.id='54:SAVE10';
  writeFileSync(path.join(directory,'54.json'),JSON.stringify({companyId:54,at:Date.now(),report:{engineVersion:ENGINE_VERSION,phase:'complete',codes:[code],targetSites:30,discoveredSites:2,pagesRead:3,pagesFailed:1,visited:[code.sources[0].url],warnings:[],sourceResults:[{url:'https://promokodus.com/old',official:false,outcome:'blocked',count:0,message:'Сайт запросил проверку браузера'}]}}));
+ const at = Date.now() - 10_000;
+ for (const id of [201, 209]) {
+  const url = getCompanyById(id)!.website;
+  writeFileSync(path.join(directory, id + '.json'), JSON.stringify({
+   companyId: id, at, report: {
+    engineVersion: ENGINE_VERSION, phase: 'complete', codes: [], targetSites: 1, discoveredSites: 1,
+    pagesRead: 1, pagesFailed: 0, visited: [url], warnings: [],
+    sourceResults: [{url, official: true, outcome: 'empty', count: 0}],
+   },
+  }));
+ }
+ writeFileSync(path.join(directory, '209.pending'), JSON.stringify({requestedAt: at + 1000, retry: at + 2000}));
  const base='http://127.0.0.1:3127';
  const server=spawn(process.execPath,['scripts/start.mjs'],{env:{...process.env,PORT:'3127',HOSTNAME:'127.0.0.1',PROMO_SEARCH_DATA_DIR:directory},stdio:['ignore','pipe','pipe']});
  let logs='';server.stdout.on('data',data=>logs+=data);server.stderr.on('data',data=>logs+=data);
@@ -39,7 +52,7 @@ test('home makes no scans; native links and favorites work without keys or carts
   await context.route('**/api/scan/54*',route=>route.fulfill({json:scanReply}));
   const initialHtml=await(await fetch(base+'/company/54')).text();
   assert.ok(!initialHtml.includes('SAVE10'));assert.ok(!initialHtml.includes('promokodus.com'));
-  const errors:string[]=[],api:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/'))api.push(request.url());});
+  const errors:string[]=[],api:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/scan/'))api.push(request.url());});
   await page.goto(base,{waitUntil:'networkidle'});assert.equal(api.length,0);assert.equal(await page.locator('article').count(),0);
   await page.getByRole('button',{name:'Приостановить анимацию',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Включить анимацию',exact:true}).getAttribute('aria-pressed'),'true');
@@ -56,25 +69,40 @@ test('home makes no scans; native links and favorites work without keys or carts
   assert.equal((await fetch(base+'/favicon.svg')).status,200);
   const storeSearch=page.getByRole('searchbox',{name:'Поиск магазинов'});
   const shops=page.locator('a[href^="/company/"]');
-  assert.equal(await shops.count(),6);
-  await page.getByRole('button',{name:'Рестораны',exact:true}).click();assert.equal(await shops.count(),3);
+  assert.equal(await shops.count(),11);
+  await page.getByRole('button',{name:'Рестораны',exact:true}).click();assert.equal(await shops.count(),6);
   await storeSearch.fill('бургер кинг');assert.equal(await shops.count(),1);assert.match(await shops.first().innerText(),/Burger King/);
   await storeSearch.fill('неизвестный');await page.getByRole('heading',{name:'Магазины не найдены'}).waitFor();
-  await page.getByRole('button',{name:'Сбросить фильтры'}).click();assert.equal(await shops.count(),6);
+  await page.getByRole('button',{name:'Сбросить фильтры'}).click();assert.equal(await shops.count(),11);
   for(const [id,name] of [[401,'Burger King'],[402,'Вкусно — и точка'],[403,'ROSTIC’S'],[404,'Пятёрочка'],[405,'Яндекс Еда']] as const) {
     assert.equal((await fetch(base+'/api/scan/'+id)).status,200);
     assert.equal(await page.getByRole('link',{name:'Промокоды '+name,exact:true}).getAttribute('href'),'/company/'+id);
   }
+  const emptyCard = page.locator('a[href="/company/201"]');
+  await emptyCard.getByText('Актуальных промокодов нет', {exact: true}).waitFor();
+  const failedCard = page.locator('a[href="/company/209"]');
+  await failedCard.getByText('Не удалось обновить', {exact: true}).waitFor();
+  assert.equal(await failedCard.locator('time').getAttribute('datetime'), new Date(at).toISOString());
+  await page.locator('a[href="/company/211"]').getByText('Ещё не проверяли', {exact: true}).waitFor();
+  await page.getByLabel('Поиск магазинов').fill('магнит');
+  assert.equal(await shops.count(),1);
+  assert.equal(await page.locator('a[href="/company/201"]').count(),1);
+  await page.getByLabel('Поиск магазинов').fill('');
   for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`Overflow at ${width}px`);}
-  for(const id of [5,102,201,202,203,204,205,206,207,208,301,302,999]){
+  for(const id of [5,102,202,203,204,205,206,207,208,301,302,999]){
    for(const method of ['GET','POST'])assert.equal((await fetch(base+'/api/scan/'+id,{method})).status,404);
   }
   assert.equal((await fetch(base+'/api/promocodes/saved?ids=201:OLD')).status,200);
   assert.deepEqual((await(await fetch(base+'/api/promocodes/saved?ids=201:OLD')).json()).codes,[]);
   for(const ids of ['',',','<script>'])assert.equal((await fetch(base+'/api/promocodes/saved?ids='+encodeURIComponent(ids))).status,400);
-  await page.goto(base+'/company/201');await page.getByRole('heading',{name:'Страница не найдена',exact:true}).waitFor();
-  await page.goto(base);
-  const merchant=page.getByRole('link',{name:'Промокоды ВкусВилл',exact:true});await merchant.hover();assert.equal(await merchant.evaluate(el=>getComputedStyle(el).transform),'none');await merchant.click();
+  const magnit=parsePublicOfficial(201,readFileSync(new URL('./fixtures/magnit-official.html',import.meta.url),'utf8'))[0];
+  await context.route('**/api/scan/201*',route=>route.fulfill({json:{...scanReply,codes:[magnit]}}));
+  await page.locator('a[href="/company/201"]').click();
+  await page.getByRole('heading',{name:'Промокоды Магнит',exact:true}).waitFor();
+  await startSearch(page);
+  await page.getByRole('button',{name:'Сохранить ДОСТАВКА25',exact:true}).waitFor();
+  await page.goto(base,{waitUntil:'networkidle'});api.length=0;
+  await page.locator('a[href="/company/54"]').click();
   assert.equal(api.length,0);await startSearch(page);
   await page.getByText('Подробнее об обновлении',{exact:true}).click();
   assert.equal(await page.getByText('Пропущен: Сайт запросил проверку браузера',{exact:false}).count(),1);assert.equal(await page.getByText('promokodus.com',{exact:false}).count(),0);
@@ -131,7 +159,7 @@ test('home makes no scans; native links and favorites work without keys or carts
   // Bundled logos paint with JavaScript disabled, without letter placeholders.
   const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();
   await nativePage.goto(base,{waitUntil:'networkidle'});
-  const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),1);
+  const logos=nativePage.locator('img[src^="/logos/"]');assert.equal(await logos.count(),11);
   assert.ok(await logos.evaluateAll(images=>images.every(img=>(img as HTMLImageElement).naturalWidth>0&&getComputedStyle(img).opacity==='1')));await native.close();
   const blocked=await browser.newContext();await blocked.addInitScript(()=>{const original=Storage.prototype.setItem;Object.defineProperty(window,'restorePromoStorage',{value:()=>{Storage.prototype.setItem=original;}});Storage.prototype.setItem=()=>{throw Error('storage disabled');};});
   const blockedPage=await blocked.newPage();await blocked.route('**/api/scan/54*',route=>route.fulfill({json:scanReply}));await blockedPage.goto(base+'/company/54',{waitUntil:'networkidle'});await startSearch(blockedPage);
@@ -155,9 +183,9 @@ test('home makes no scans; native links and favorites work without keys or carts
   const migration=await browser.newContext();const migrationPage=await migration.newPage();await migrationPage.goto(base);
   const legacy=JSON.stringify([{id:'54:SAVE10',companyId:54,code:'SAVE10',savedAt:100},{id:'201:OLD',companyId:201,code:'OLD',savedAt:100}]);
   await migrationPage.evaluate(raw=>localStorage.setItem('promospy:saved-promos:v1',raw),legacy);
-  await migrationPage.goto(base+'/saved');await migrationPage.getByRole('heading',{name:'Избранное (1)',exact:true}).waitFor();
-  assert.equal(await migrationPage.getByText('OLD',{exact:true}).count(),0);
+  await migrationPage.goto(base+'/saved');await migrationPage.getByRole('heading',{name:'Избранное (2)',exact:true}).waitFor();
   await migrationPage.getByRole('button',{name:'Удалить из избранного SAVE10',exact:true}).click();
+  await migrationPage.getByRole('button',{name:'Удалить из избранного OLD',exact:true}).click();
   await migrationPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();
   assert.equal(await migrationPage.evaluate(()=>localStorage.getItem('promospy:saved-promos:v1')),legacy);
   await migrationPage.reload();await migrationPage.getByText('Пока нет сохранённых кодов',{exact:true}).waitFor();await migration.close();

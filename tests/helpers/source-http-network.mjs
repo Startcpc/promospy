@@ -1,11 +1,14 @@
 // Synthetic HTTP regression scenario only. Never imported by the application.
 import { appendFileSync } from 'node:fs';
+import { fixtureDns } from './fixture-dns.mjs';
 const original=globalThis.fetch;
 globalThis.fetch=async(input,init)=>{
  const url=typeof input==='string'?input:input instanceof URL?input.href:input.url;
  if(/^http:\/\/(127\.0\.0\.1|localhost)(:|\/)/.test(url))return original(input,init);
- if(process.env.PROMO_TEST_REQUEST_LOG)appendFileSync(process.env.PROMO_TEST_REQUEST_LOG,url+'\n');
  const parsed=new URL(url);
+ const dns=fixtureDns(parsed);
+ if(dns)return dns;
+ if(process.env.PROMO_TEST_REQUEST_LOG)appendFileSync(process.env.PROMO_TEST_REQUEST_LOG,url+'\n');
  if(parsed.pathname==='/robots.txt')return new Response('robots resource requires authentication',{status:401});
  if(parsed.hostname==='vkusvill.ru')return new Response('forbidden',{status:403});
  if(parsed.hostname==='promokod.pikabu.ru')return new Response('not found',{status:404});

@@ -2,6 +2,9 @@ import assets from 'site-assets';
 import { getCompanyById } from '../src/lib/promocodes';
 import { parseSavedIds } from '../src/lib/saved-promos';
 import { scan } from './search';
+import { APP_VERSION } from '../src/lib/app-version';
+import { companies } from '../src/lib/companies';
+import { summarizeCatalogStatus } from '../src/lib/catalog-status';
 
 function json(value,status=200) { return Response.json(value,{status,headers:{'Cache-Control':'no-store'}}); }
 function asset(path,status=200) {
@@ -31,6 +34,7 @@ const worker={async fetch(request) {
     const old=cached(id);
     if(old && old.serverTime+30000>Date.now())return json({...old,serverTime:Date.now()});
     const state=await scan(company);
+    if(state.status==='failed' && old)state.lastScan=old.lastScan;
     latest.set(id,state);
     return json(state);
   }
@@ -42,7 +46,11 @@ const worker={async fetch(request) {
     const codes=states.flatMap(state=>state?.codes??[]).filter(code=>ids.includes(code.id));
     return json({codes,missingIds:ids.filter(id=>!codes.some(code=>code.id===id))});
   }
-  if(path==='/api/health')return json({ok:true,version:'0.17.0'});
+  if(path==='/api/catalog-status'){
+    const stores=Object.fromEntries(companies.map(({id})=>[id,summarizeCatalogStatus(cached(id)??idle())]));
+    return json({stores});
+  }
+  if(path==='/api/health')return json({ok:true,version:APP_VERSION});
   if(Object.hasOwn(assets,path))return asset(path);
   const merchant=getCompanyById(Number(/^\/company\/(\d+)\/?$/.exec(path)?.[1]));
   return asset('/index.html',path==='/'||path==='/saved'||merchant?200:404);

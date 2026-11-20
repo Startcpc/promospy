@@ -5,6 +5,11 @@ export const merchantAliases: Record<number, string[]> = {
   403: ['ROSTIC’S', 'Ростикс', 'ростикс кфс'],
   404: ['Пятёрочка', 'Пятёрочка Доставка', 'Доставка Пятёрочка', '5ka'],
   405: ['Яндекс Еда', 'Еда Яндекса', 'Yandex Eda', 'Yandex Eats'],
+  201: ['магнит', 'magnit'],
+  209: ['метро', 'metro'],
+  210: ['ёдо суши', 'ёдо', 'edosushi'],
+  211: ['fox pizza', 'foxpizza', 'фокс пицца', 'фокс pizza'],
+  212: ['алло пицца', 'allopizza'],
 };
 export const normalizeMerchantName = (name: string) => name.toLocaleLowerCase('ru').replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]/gu, '');
 export function merchantIdentity(name: string) {

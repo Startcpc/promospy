@@ -1,0 +1,320 @@
+{
+  "startedAt": "2026-11-19T15:33:34.844Z",
+  "base": "http://127.0.0.1:3000",
+  "initial": [
+    {
+      "id": 54,
+      "lastScan": 1795102450231,
+      "nextScan": 1795102750231,
+      "status": "idle",
+      "pagesRead": 7,
+      "official": [
+        "1раз"
+      ],
+      "sources": [
+        {
+          "url": "https://vkusvill.ru/promocodes/",
+          "official": true,
+          "outcome": "codes",
+          "count": 1,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://vkusvill.ru/promocodes/"
+        },
+        {
+          "url": "https://vkusvill.ru",
+          "official": true,
+          "outcome": "index",
+          "count": 0,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://vkusvill.ru"
+        },
+        {
+          "url": "https://vkusvill.ru/offers/",
+          "official": true,
+          "outcome": "unrecognized",
+          "count": 0,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://vkusvill.ru/offers/",
+          "message": "Страница загружена, но промокоды не распознаны"
+        },
+        {
+          "url": "https://vkusvill.ru/offers/lyubimyy-produkt-dlya-novichkov-poluchayte-20-skidki-srazu.html",
+          "official": true,
+          "outcome": "unrecognized",
+          "count": 0,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://vkusvill.ru/offers/lyubimyy-produkt-dlya-novichkov-poluchayte-20-skidki-srazu.html",
+          "message": "Страница загружена, но промокоды не распознаны"
+        }
+      ]
+    },
+    {
+      "id": 201,
+      "lastScan": 1795102454368,
+      "nextScan": 1795102754368,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "ДОСТАВКА25"
+      ],
+      "sources": [
+        {
+          "url": "https://promo.magnit.ru/",
+          "official": true,
+          "outcome": "codes",
+          "count": 1,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://promo.magnit.ru/"
+        }
+      ]
+    },
+    {
+      "id": 209,
+      "lastScan": 1795102458351,
+      "nextScan": 1795102758351,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "METRO",
+        "HAPPY",
+        "ДРУЖИМ",
+        "SKIDKA15"
+      ],
+      "sources": [
+        {
+          "url": "https://online.metro-cc.ru/promo/promocode/",
+          "official": true,
+          "outcome": "codes",
+          "count": 5,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://online.metro-cc.ru/promo/promocode/"
+        }
+      ]
+    },
+    {
+      "id": 210,
+      "lastScan": 1795102460985,
+      "nextScan": 1795102760985,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "HAPPY",
+        "EDO",
+        "CHICKEN",
+        "SET1",
+        "SET2",
+        "PIZZA",
+        "ROLL",
+        "KIDS",
+        "BBQ",
+        "UDON"
+      ],
+      "sources": [
+        {
+          "url": "https://edosushi.ru/offers",
+          "official": true,
+          "outcome": "codes",
+          "count": 10,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://edosushi.ru/offers"
+        }
+      ]
+    }
+  ],
+  "automatic": [
+    {
+      "id": 209,
+      "lastScan": 1795102775354,
+      "nextScan": 1795103075354,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "METRO",
+        "HAPPY",
+        "ДРУЖИМ",
+        "SKIDKA15"
+      ],
+      "sources": [
+        {
+          "url": "https://online.metro-cc.ru/promo/promocode/",
+          "official": true,
+          "outcome": "codes",
+          "count": 5,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://online.metro-cc.ru/promo/promocode/"
+        }
+      ]
+    },
+    {
+      "id": 210,
+      "lastScan": 1795102785386,
+      "nextScan": 1795103085386,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "HAPPY",
+        "EDO",
+        "CHICKEN",
+        "SET1",
+        "SET2",
+        "PIZZA",
+        "ROLL",
+        "KIDS",
+        "BBQ",
+        "UDON"
+      ],
+      "sources": [
+        {
+          "url": "https://edosushi.ru/offers",
+          "official": true,
+          "outcome": "codes",
+          "count": 10,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://edosushi.ru/offers"
+        }
+      ]
+    }
+  ],
+  "tabsClosedAt": "2026-11-19T15:34:22.058Z",
+  "observedAfterClose": [
+    {
+      "id": 54,
+      "lastScan": 1795102787488,
+      "nextScan": 1795103087488,
+      "status": "idle",
+      "pagesRead": 4,
+      "official": [],
+      "expired": [
+        "VSC6FPB",
+        "VSDH193",
+        "1111",
+        "40VJJTBR"
+      ],
+      "sourceResults": [
+        {
+          "url": "https://vkusvill.ru/promocodes/",
+          "official": true,
+          "outcome": "error",
+          "count": 0,
+          "message": "Источник не ответил вовремя",
+          "errorCode": "timeout",
+          "attempts": 0,
+          "failureUrl": "https://vkusvill.ru/promocodes/"
+        },
+        {
+          "url": "https://vkusvill.ru",
+          "official": true,
+          "outcome": "index",
+          "count": 0,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://vkusvill.ru"
+        },
+        {
+          "url": "https://vkusvill.ru/offers/",
+          "official": true,
+          "outcome": "error",
+          "count": 0,
+          "message": "The operation was aborted due to timeout"
+        },
+        {
+          "url": "https://vkusvill.ru/offers/lyubimyy-produkt-dlya-novichkov-poluchayte-20-skidki-srazu.html",
+          "official": true,
+          "outcome": "error",
+          "count": 0,
+          "message": "The operation was aborted due to timeout"
+        }
+      ]
+    },
+    {
+      "id": 201,
+      "lastScan": 1795102835658,
+      "nextScan": 1795103135658,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "ДОСТАВКА25"
+      ],
+      "expired": [],
+      "sourceResults": [
+        {
+          "url": "https://promo.magnit.ru/",
+          "official": true,
+          "outcome": "codes",
+          "count": 1,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://promo.magnit.ru/"
+        }
+      ]
+    },
+    {
+      "id": 209,
+      "lastScan": 1795102775354,
+      "nextScan": 1795103075354,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "METRO",
+        "HAPPY",
+        "ДРУЖИМ",
+        "SKIDKA15"
+      ],
+      "expired": [
+        "20NEW"
+      ],
+      "sourceResults": [
+        {
+          "url": "https://online.metro-cc.ru/promo/promocode/",
+          "official": true,
+          "outcome": "codes",
+          "count": 5,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://online.metro-cc.ru/promo/promocode/"
+        }
+      ]
+    },
+    {
+      "id": 210,
+      "lastScan": 1795102785386,
+      "nextScan": 1795103085386,
+      "status": "idle",
+      "pagesRead": 1,
+      "official": [
+        "HAPPY",
+        "EDO",
+        "CHICKEN",
+        "SET1",
+        "SET2",
+        "PIZZA",
+        "ROLL",
+        "KIDS",
+        "BBQ",
+        "UDON"
+      ],
+      "expired": [],
+      "sourceResults": [
+        {
+          "url": "https://edosushi.ru/offers",
+          "official": true,
+          "outcome": "codes",
+          "count": 10,
+          "httpStatus": 200,
+          "attempts": 1,
+          "finalUrl": "https://edosushi.ru/offers"
+        }
+      ]
+    }
+  ],
+  "observationAt": "2026-11-19T15:41:03.601Z"
+}

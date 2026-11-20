@@ -1,0 +1,57 @@
+{
+  "54": {
+    "page": "https://apps.apple.com/ru/app/id1399903464",
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e4/ff/13/e4ff13dc-51ec-fdd2-bfc3-343d8f8bc0a6/DefaultAppIcon-0-0-1x_U007ephone-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+    "note": "Значок официального приложения продавца VKUSVILL, OOO в App Store. Изображение JPEG преобразовано в PNG."
+  },
+  "201": {
+    "page": "https://promo.magnit.ru/",
+    "image": "https://static.tildacdn.com/tild3132-3761-4361-b963-636631326637/logo.svg",
+    "note": "SVG логотипа с официального промосайта, растрирован в PNG с сохранением пропорций."
+  },
+  "209": {
+    "page": "https://online.metro-cc.ru/promo/promocode/",
+    "image": "https://online.metro-cc.ru/promo/wp-content/themes/genderlanding/src/assets/images/header-logo.svg",
+    "note": "Настольный логотип METRO из шапки официальной страницы, SVG растрирован в PNG."
+  },
+  "210": {
+    "page": "https://edosushi.ru/offers",
+    "image": "https://cdn.foodsoul.ru/zones/ru/chains/3916/images/main/309d9a748caf5603c63e72bf92dbf349.png?v1692434943",
+    "note": "Знак организации из структурированных данных и иконка сайта ЁДО Суши, исходный PNG."
+  },
+  "211": {
+    "page": "https://fox-pizza.ru/promotions",
+    "image": "https://fox-pizza.ru/foxPizza/logo.png",
+    "note": "Основной логотип в шапке официального сайта, исходный PNG."
+  },
+  "212": {
+    "page": "https://allopizza.su/actions",
+    "image": "https://cdn.arora.pro/c/upload/68a6154b-aab8-48f0-ad15-fc25056cc6a7/file_manager/theme/hdr.png",
+    "note": "Логотип организации со страницы акций официального сайта, исходный PNG."
+  },
+  "401": {
+    "page": "https://apps.apple.com/ru/app/id1257821028",
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/12/68/3d/12683d5c-42b4-c45d-c21e-b6ce80c2d0e0/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg",
+    "publisher": "Burger Rus, Ooo"
+  },
+  "402": {
+    "page": "https://apps.apple.com/ru/app/id896111038",
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/11/46/66/11466649-58f3-cf68-fe7f-cd419c952ad5/AppIcon-2-0-0-1x_U007ephone-0-0-0-1-0-0-85-220.png/512x512bb.jpg",
+    "publisher": "TEKHNOLOGII-I TOCHKA, OOO"
+  },
+  "403": {
+    "page": "https://apps.apple.com/ru/app/id1074266177",
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/69/eb/40/69eb40b6-9ee6-f0f2-41ed-5cb0b648da56/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg",
+    "publisher": "UNIREST TECHNOLOGIES LLC"
+  },
+  "404": {
+    "page": "https://apps.apple.com/ru/app/id1622633822",
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e4/a9/88/e4a98874-5f87-1cd5-11f7-1b7bc6079a44/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+    "publisher": "AGROTORG, OOO"
+  },
+  "405": {
+    "page": "https://apps.apple.com/ru/app/id1078986931",
+    "image": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/66/1a/d2/661ad20b-136c-e15e-70f6-62bff0355b83/AppIcon-0-0-1x_U007ephone-0-1-0-0-85-220.png/512x512bb.jpg",
+    "publisher": "Mikromobilnost doo"
+  }
+}

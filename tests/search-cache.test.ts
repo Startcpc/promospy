@@ -73,23 +73,24 @@ test('duplicate persisted offers cannot produce duplicate React keys',()=>{
  const parsed=parseSearchCache(JSON.stringify({...entry,report:{...entry.report,codes:[offer,offer]}}),54)!;
  assert.equal(parsed.report.codes.length,1);assert.equal(parsed.report.codes[0].code,'1раз');assert.equal(parsed.report.phase,undefined);
 });
-test('historical merchants and foreign offers are excluded without deleting their disk data',()=>temporary(async root=>{
+test('Magnit cache is readable and foreign offers stay out of VkusVill cache',()=>temporary(async root=>{
  const legacy={...entry,companyId:201,report:{...entry.report,codes:[{...offer,id:'201:OLD',companyId:201,code:'OLD'}]}};
  const raw=JSON.stringify(legacy);await writeFile(path.join(root,'201.json'),raw);
- assert.equal(await readSearchCache(201,root),null);assert.equal(await readFile(path.join(root,'201.json'),'utf8'),raw);
+ assert.deepEqual(await readSearchCache(201,root),legacy);assert.equal(await readFile(path.join(root,'201.json'),'utf8'),raw);
  const foreign={...offer,id:'201:FOREIGN',code:'FOREIGN',companyId:201};
  const parsed=parseSearchCache(JSON.stringify({...entry,report:{...entry.report,codes:[offer,foreign]}}),54)!;
  assert.deepEqual(parsed.report.codes.map(code=>code.companyId),[54]);
 }));
-test('legacy multi-merchant backup restores only VkusVill and preserves the full original and old directory',()=>temporary(async root=>{
+test('legacy multi-merchant backup restores both active stores and preserves the original',()=>temporary(async root=>{
  const data=path.join(root,'data'),file=path.join(root,'legacy.json');await mkdir(data);
  const legacy={...entry,companyId:201,report:{...entry.report,codes:[]}};
  const raw=JSON.stringify({format:'promospy-search-cache',version:1,entries:[entry,legacy]});
  await writeFile(file,raw);await writeFile(path.join(data,'201.json'),JSON.stringify(legacy));
  const restored=await restoreSearchCache(file,data);
- assert.equal(restored.count,1);assert.equal(await readFile(file,'utf8'),raw);
- assert.deepEqual(await readdir(data),['54.json']);assert.equal(await readFile(path.join(restored.previous!,'201.json'),'utf8'),JSON.stringify(legacy));
+ assert.equal(restored.count,2);assert.equal(await readFile(file,'utf8'),raw);
+ assert.deepEqual((await readdir(data)).sort(),['201.json','54.json']);assert.equal(await readFile(path.join(restored.previous!,'201.json'),'utf8'),JSON.stringify(legacy));
  assert.deepEqual(await readSearchCache(54,data),entry);
+ assert.deepEqual(await readSearchCache(201,data),legacy);
 }));
 
 test('active backup rotation preserves historical multi-merchant backups',()=>temporary(async root=>{

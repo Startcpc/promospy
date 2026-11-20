@@ -5,7 +5,7 @@ import { merchantAliases, merchantIdentity, normalizeMerchantName } from "./merc
 import { parsePromoDate } from "./promo-date";
 export { parsePromoDate } from "./promo-date";
 import { extractOfficialDates } from "./promo-terms";
-import { foreignMerchantHeading, explicitCode, validCouponToken } from "./promo-quality";
+import { foreignMerchantHeading, explicitCode, validMerchantCouponToken } from "./promo-quality";
 
 type RecordValue = Record<string, unknown>;
 export type ParseDiagnostics={incomplete:boolean;reasons:string[];rejectedCodes?:string[]};
@@ -91,7 +91,7 @@ function recordToPromo(record: RecordValue, companyId: number, sourceUrl: string
   const rawCode = codeField ? field(record,[codeField]) : record["@type"] === "Offer" && typeof record.description === "string" ? explicitCode(record.description) : undefined;
   if (!rawCode) return;
   const code = codeKey(rawCode);
-  if (!validCouponToken(code)) return;
+  if (!validMerchantCouponToken(code, companyId)) return;
   const reject=(reason:string)=>{
     if(diagnostics){diagnostics.incomplete=true;diagnostics.rejectedCodes??=[];if(diagnostics.rejectedCodes.length<100)diagnostics.rejectedCodes.push(code);if(diagnostics.reasons.length<5)diagnostics.reasons.push(reason);}
     return undefined;

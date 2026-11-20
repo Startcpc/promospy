@@ -130,3 +130,28 @@ input[type="checkbox"] { accent-color:#24613d; width:18px; height:18px; }
 .site-footer { background:#f0eee8; }.footer-inner,.footer-brand { color:#4c4a45; }.scan-panel { background:#f6efe4; border-color:#e5d7c6; }.scan-symbol { color:#ffc189; }.page-eyebrow { color:#874121; }
 @media(max-width:900px) { .shop-grid {grid-template-columns:repeat(2,minmax(0,1fr));} .cover-copy {padding:32px;} }
 @media(max-width:680px) { .catalog-main {padding:18px 16px 46px;} .food-cover {grid-template-columns:1fr; border-radius:22px;} .cover-copy {padding:30px 24px;} .cover-copy h1 {font-size:clamp(3.2rem,11.5vw,4.8rem);} .cover-kicker {margin-bottom:13px;} .cover-description {margin:15px 0;} .cover-photos {min-height:0;height:clamp(170px,48vw,260px);} .cover-burger {object-position:50% 52%;} .citrus-frame {width:25%;left:2%;bottom:-19%;} .catalog-toolbar {align-items:stretch;flex-direction:column;} .catalog-input input {width:100%;} .store-catalog {margin-top:32px;} .shop-grid {grid-template-columns:1fr;} .shop-tile {padding:13px 16px;} .catalog-tabs {gap:5px;} .catalog-tabs button {padding:7px 11px;} }
+
+/* Ink, apricot and brick repeat from the cover through the catalog and scan. */
+:root { --foreground:#26231f; --forest:#302421; --ring:#a6482a; }
+.brand-mark { border-radius:12px 12px 12px 4px; background:#ff9e62; }
+.food-cover { background:#352824; color:#fff8ed; grid-template-columns:1fr 1.04fr; }
+.cover-kicker { color:#ffdcb5; }
+.cover-copy h1 em { color:#ffad72; }
+.cover-action { background:#ffb277; color:#30231b; }.cover-action:hover { background:#ffd1a7; }
+.cover-description { color:#f3e5d9; }.cover-photos { margin:14px 14px 14px 0; border-radius:17px; min-height:390px; }
+.citrus-frame { border-color:#352824; width:39%; border-width:8px; }
+.shop-tile { align-items:flex-start; padding:20px; background:linear-gradient(110deg,#fff,#fff 75%,#fbf6ef); }
+.shop-mark { width:62px; height:62px; border-radius:15px; overflow:hidden; }.shop-mark>img { width:100%; height:100%; object-fit:contain; }
+.shop-text { min-width:0; }.shop-text strong { line-height:1.24; }
+.catalog-status { font-size:.81rem; line-height:1.45; color:#625e56; margin-top:7px; }
+.catalog-status p + p { margin-top:2px; }.catalog-status[data-state=ready] { color:#236242; }
+.catalog-status[data-state=partial],.catalog-status[data-state=failed] { color:#8e4525; }
+.scan-panel { background:#f8eee1; }.store-logo.shop-mark { padding:0; }.store-logo.shop-mark img { width:100%;height:100%; }
+@media (prefers-reduced-motion:no-preference) {
+  .cover-copy { animation:catalog-appear .48s ease-out both; }
+  .shop-tile { animation:catalog-appear .26s ease-out both; }
+  .shop-tile:nth-child(3n + 2) { animation-delay:.035s; }
+  .shop-tile:nth-child(3n) { animation-delay:.07s; }
+  @keyframes catalog-appear { from { opacity:.4; translate:0 7px; } to { opacity:1; translate:0 0; } }
+}
+@media(max-width:680px) { .food-cover {grid-template-columns:1fr;} .cover-photos {margin:0 10px 10px;min-height:0;} .shop-tile {padding:15px;} }
