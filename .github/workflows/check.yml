@@ -49,7 +49,7 @@ jobs:
 
   portable:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +67,9 @@ jobs:
       - run: pnpm test
       - run: pnpm test:search
       - run: pnpm test:launcher
+
+      - name: Launch the release ZIP on the native runner
+        run: python scripts/test-release-zip.py
 
   docker:
     runs-on: ubuntu-24.04
