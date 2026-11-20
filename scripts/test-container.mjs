@@ -8,7 +8,7 @@ const expectedVersion=JSON.parse(readFileSync(new URL('../package.json',import.m
 const request=(path,options={})=>fetch(new URL(path,base),{...options,signal:AbortSignal.timeout(15000)});
 const health=await request('/api/health');assert.equal(health.status,200);
 const identity=await health.json();assert.equal(identity.status,'ok');assert.equal(identity.version,expectedVersion);
-const home=await request('/');assert.equal(home.status,200);const html=await home.text();assert.match(html,/ВкусВилл/);assert.match(html,/Магнит/);
+const home=await request('/');assert.equal(home.status,200);const catalog=await home.text();assert.match(catalog,/ВкусВилл/);assert.match(catalog,/Магнит/);
 const page=await request('/company/54');assert.equal(page.status,200);
 const html=await page.text();assert.ok(!/<article(?:\s|>)/i.test(html),'Search page must be empty before clicking Refresh');
 assert.ok(!html.includes('Результаты получены:'));assert.ok(!html.includes('promokodus.com'));
